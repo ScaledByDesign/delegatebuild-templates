@@ -1,0 +1,7 @@
+[
+	"app.json",
+	"babel.config.js",
+	"metro.config.js",
+	"package.json",
+	"wrangler.jsonc"
+]

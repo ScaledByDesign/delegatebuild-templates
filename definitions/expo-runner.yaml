@@ -1,0 +1,7 @@
+name: "expo-runner"
+description: "Expo React Native mobile app. Build native iOS and Android apps with file-based routing and Tailwind styling via NativeWind."
+base_reference: "expo-reference"
+projectType: mobile
+
+package_patches:
+  name: "expo-runner"
