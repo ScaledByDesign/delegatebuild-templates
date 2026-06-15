@@ -1,0 +1,20 @@
+name: "universal-express-checkout"
+description: "Universal Express Checkout — single-page cart → shipping → payment → confirmation storefront with a processor-agnostic checkout adapter (Stripe, OmniCart/Medusa, Konnektive, Sticky.io) and a Flow Builder post-purchase upsell sequence"
+base_reference: "vite-reference"
+projectType: app
+
+# Processor-agnostic variant of omnicart-express-checkout. The checkout flow is
+# identical; the difference is a pluggable CheckoutProcessorAdapter contract
+# (src/lib/checkout/) modeled on the Delegate platform's
+# lib/integrations/checkout adapter registry. One universal storefront drives
+# any registered processor: Stripe + OmniCart (Medusa) are payment-processor
+# class; Konnektive + Sticky.io are CRM/order-platform class. Each adapter
+# declares a three-class capability surface and returns discriminated charge
+# results. Demo fallback is preserved across every processor. OmniCart remains
+# the whitelabel brand; "Medusa" appears only as the internal framework ref.
+package_patches:
+  name: "universal-express-checkout"
+  dependencies:
+    "@medusajs/medusa-js": "^6.1.7"
+    "@stripe/stripe-js": "^4.10.0"
+    "@stripe/react-stripe-js": "^2.9.0"

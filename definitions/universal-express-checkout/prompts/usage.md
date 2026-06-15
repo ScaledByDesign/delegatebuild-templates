@@ -1,0 +1,199 @@
+# Usage Instructions
+
+This template generates a **Universal Express Checkout** storefront. The checkout experience lives at `src/pages/CheckoutPage.tsx` and is composed of step components in `src/components/checkout/`. What makes it universal: the initial charge is driven by a **processor-agnostic adapter contract** (`src/lib/checkout/`), so the same UI can complete a purchase through Stripe, OmniCart, Konnektive, or Sticky.io. The page auto-updates as you edit.
+
+> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of the **Medusa** commerce framework (`@medusajs/medusa-js`). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
+
+## Checkout adapter contract (`src/lib/checkout/`)
+
+Every payment processor is plugged in through one contract so the checkout UI never hardcodes a gateway. The pieces:
+
+* **`types.ts`** - the contract. `CheckoutProcessorAdapter` exposes:
+  * `kind` - the `ProcessorKind` (`"stripe" | "omnicart" | "konnektive" | "stickyio"`).
+  * `capabilities` - a `CheckoutProcessorCapabilities` map (see below).
+  * `chargeInitial(input: ChargeInitialInput): Promise<ChargeInitialResult>` - charges the initial order. Result is a discriminated union: `succeeded` (`{ status, processorOrderId, order }`), `requires_action` (`{ status, clientSecret, returnUrl? }` for SCA/3DS), `failed` (`{ status, errorCode, userMessage }`), or `demo` (`{ status: "demo" }`).
+  * `initPayment?(input: PaymentInitInput): Promise<PaymentInitResult>` - **payment-class only**. Prepares the in-browser collection step. Result union: `collect_payment_method` (`{ publishableKey, amountCents, currencyCode, initToken? }`), `confirm_client_secret` (`{ publishableKey, clientSecret, paymentCollectionId, cartId? }`), `failed`, or `demo`.
+* **`capabilities.ts`** - the `Capability` vocabulary (`card_charge`, `subscription`, `saved_payment_method`, `apple_pay`, `google_pay`, `paypal_wallet`, `sca_3ds_fallback`, `refund`, `order_bump`, `address_validation`) and the three-tier `CheckoutProcessorCapabilities` shape: `publish` (always supported), `render` (UI-surfaced, e.g. wallets), `runtimeFallback` (conditional, e.g. 3DS). Use `hasPublishCapability` / `hasRenderCapability` / `hasRuntimeFallbackCapability` to branch UI, and `buildCapabilities(publish, render?, runtimeFallback?)` to declare a new adapter.
+* **`manifest.ts`** - `PROCESSOR_MANIFEST`, the source of truth for which processors exist and their `label` + `class` (`"payment" | "crm"`). Exports `ProcessorKind`, `PROCESSOR_IDS`, `PROCESSOR_LABELS`, `PROCESSOR_CLASSES`, `isProcessorKind`, `processorLabel`.
+* **`registry.ts`** - `getCheckoutAdapter(kind)` lazily imports + caches the adapter for a kind; `listRegisteredKinds()` lists them. The registry is keyed off the manifest so adding a processor is: implement the adapter, add a manifest entry, add a registry thunk.
+* **`proxy.ts`** - `checkoutProxy<T>(kind, path, body, pick, fallbackError, init?)`. All adapters call their backend through this single helper, which POSTs to `/api/checkout/:kind/:path` and decodes a `503 { demo: true }` response into `{ demo: true }`. **Never** call a processor backend directly from the browser - always go through `checkoutProxy` so keys stay server-side and demo fallback works uniformly.
+
+### Adapter classes
+
+* **Payment-class** (`adapters/stripe.ts`, `adapters/omnicart.ts`) - implement **both** `initPayment` and `chargeInitial`. The page calls `initPayment` first to collect/confirm a payment method in the browser, then `chargeInitial` to capture.
+* **CRM-class** (`adapters/konnektive.ts`, `adapters/stickyio.ts`) - implement `chargeInitial` **only**. The CRM owns the gateway and vaulting, so a single server-side call charges the order. Sticky.io can still return `requires_action` (declares `sca_3ds_fallback`).
+
+```ts
+import { getCheckoutAdapter } from "@/lib/checkout/registry";
+import { hasPublishCapability } from "@/lib/checkout/capabilities";
+
+const adapter = await getCheckoutAdapter("stripe");
+
+// Payment-class: collect first, then charge
+if (adapter.initPayment) {
+  const init = await adapter.initPayment({ cart, customer, chargeTarget });
+  // ...mount the collection UI from init (publishableKey / clientSecret)...
+}
+const result = await adapter.chargeInitial({ cart, customer, chargeTarget, idempotencyKey });
+switch (result.status) {
+  case "succeeded":       /* result.order is an OrderSummary */ break;
+  case "requires_action": /* surface SCA/3DS using result.clientSecret */ break;
+  case "failed":          /* show result.userMessage */ break;
+  case "demo":            /* synthesize a demo order so upsell + confirmation run */ break;
+}
+
+const canSubscribe = hasPublishCapability(adapter.capabilities, "subscription");
+```
+
+`CheckoutPage.tsx` orchestrates this: it owns `processor` state (defaults to `"omnicart"`), resolves the active `adapter` via `getCheckoutAdapter`, builds a `ChargeTarget` from the cart in `buildChargeTarget()`, and in `handlePaid` runs `initPayment` (payment-class) then `chargeInitial`, pattern-matching the result union (adopt order / surface 3DS notice / show error / fall to demo). The `ProcessorPicker` at the cart step lets the user switch processors.
+
+## Commerce client (`src/lib/omnicart.ts`)
+
+The `omnicart` client talks to the same-origin Worker proxy at `/api/omnicart`. **Use it** for all store operations (carts, regions, shipping options, payment sessions, promotions). The OmniCart adapter reuses these lifecycle helpers for its charge. Do not call the backend directly from the browser - always go through `omnicart` so the publishable key and backend URL stay server-side.
+
+```ts
+import { omnicart, formatAmount, type OmniCart } from "@/lib/omnicart";
+
+const { cart } = await omnicart.carts.create({ region_id });
+await omnicart.carts.lineItems.create(cart.id, { variant_id, quantity: 1 });
+```
+
+`formatAmount(amount, currencyCode)` formats minor-unit amounts (cents) into a localized currency string.
+
+### Cart lifecycle (initial checkout)
+
+The cart -> shipping flow is wired to the full **OmniCart (Medusa v2) cart lifecycle** via typed helpers in `src/lib/omnicart.ts`. Every helper returns a `BackendResult<T>` (`{ ok, data?, demo?, error? }`) - when no backend is configured the Worker proxy returns `503 { demo: true }`, the helper reports `demo: true`, and `CheckoutPage` keeps its self-contained demo state.
+
+```ts
+import {
+  createCart, addLineItem, updateLineItem, removeLineItem,
+  updateCartContact, listShippingOptions, addShippingMethod,
+} from "@/lib/omnicart";
+
+const created = await createCart(region_id);
+if (!created.demo && created.ok) {
+  let cart = created.data!;
+  const added = await addLineItem(cart.id, variant_id, 1);
+  if (added.ok) cart = added.data!;
+  await updateCartContact(cart.id, { email, shipping_address });
+  const opts = await listShippingOptions(cart.id);
+  await addShippingMethod(cart.id, opts.data![0].id);
+}
+```
+
+`CheckoutPage.tsx` calls `createCart` on mount, seeds the demo line items, and a `liveCart` flag tracks live-vs-demo. Cart edits and shipping selection use the helpers when live and edit local state in demo mode. **The initial charge itself is no longer OmniCart-specific** - it runs through the active processor adapter (above). Address fields use `country_code` lowercased (e.g. `us`). The demo fallback is intentional - keep it so the generated checkout works out of the box. Ref: [Express Checkout guide](https://docs.medusajs.com/resources/storefront-development/guides/express-checkout).
+
+### Coupon / promo codes
+
+Apply and remove promotion codes with the helpers in `src/lib/omnicart.ts`:
+
+```ts
+import { applyDiscount, removeDiscount } from "@/lib/omnicart";
+
+const res = await applyDiscount(cart.id, "SAVE10");
+if (res.ok) setCart(res.cart!);
+else showError(res.error);
+await removeDiscount(cart.id, "SAVE10");
+```
+
+These proxy to the OmniCart backend's **promotions** API (`POST`/`DELETE /api/omnicart/carts/:id/promotions`, body `{ promo_codes: [code] }`). Both add and remove use the **same path** and the code travels in the body. The backend re-validates and re-prices, so `cart.promotions[]`, `discount_total` and `total` are authoritative (anti-tamper). A v2 promotion carries **no per-promotion amount** - cart-level `discount_total` is the source of truth. When no backend is configured the call returns `503 { demo: true }` and `CheckoutPage` falls back to the in-template `DEMO_COUPONS` (`SAVE10`, `WELCOME15`, `FLAT5`). Ref: [Manage Cart Promotions](https://docs.medusajs.com/resources/storefront-development/cart/manage-promotions).
+
+## Worker API (`worker/userRoutes.ts`)
+
+* `/api/checkout/:kind/*` - **per-processor charge proxy.** Forwards to the backend configured for that `kind` (e.g. `/api/checkout/stripe/charge-initial` -> `{STRIPE_CHECKOUT_BACKEND_URL}/checkout/charge-initial`), attaching processor credentials server-side. Returns `404` for an unknown kind and `503 { demo: true }` when that processor's backend env var is unset, so each adapter degrades to demo independently. **Use without modification.**
+* `/api/omnicart/*` - proxies the OmniCart storefront API (full Medusa v2 cart lifecycle + promotions), attaching `x-publishable-api-key` server-side. A demo-mode guard short-circuits every path with `503 { demo: true }` when no backend is configured.
+* `/api/upsell/session` (POST) - initializes a post-purchase upsell session for a paid order via the OmniCart **Flow Builder** runtime; returns `{ session, entry_node }`.
+* `/api/upsell/click` (GET) - accepts/declines the current offer node and walks the flow graph; on accept it charges the saved payment method (one-click). **Use without modification.**
+* `/api/omnicart-config` - returns browser-safe config (Stripe publishable key + whether the backend/upsell runtime are configured) for initializing Stripe Elements and choosing live-vs-demo upsells.
+
+## Payment collection (payment-class processors)
+
+Payment-class adapters return what the UI needs to collect a method. For **Stripe**, the payment step uses Stripe Elements initialized with the publishable key from the adapter's `initPayment` result (or `/api/omnicart-config`):
+
+```tsx
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements } from "@stripe/react-stripe-js";
+```
+
+Never hardcode or expose secret keys client-side. Only the **publishable** key reaches the browser. CRM-class processors (Konnektive, Sticky.io) collect card details through their own server-side charge and do not mount Stripe Elements.
+
+## Checkout flow (recommended structure)
+
+The single-page checkout advances through these steps (components under `src/components/checkout/`):
+
+1. **Cart** (`CartStep.tsx`) - line items, quantities, subtotal/total via `formatAmount`. Renders the **`ProcessorPicker`** so the shopper/merchant chooses the active processor.
+2. **Shipping** (`ShippingStep.tsx`) - address form + shipping option selection.
+3. **Payment** (`PaymentStep.tsx`) - collection UI for the active payment-class adapter (Stripe Elements card form); CRM-class adapters charge server-side.
+4. **Upsell** (`UpsellStep.tsx`) - **Flow Builder driven post-purchase upsell sequence** shown after the initial charge. Accepting charges the same saved payment method (no re-entry) and walks the success branch; declining walks the decline branch. Loops through offers until a terminal node, then proceeds to confirmation.
+5. **Confirmation** (`ConfirmationStep.tsx`) - an **itemized receipt**: every line item (including **every** accepted upsell) plus subtotal, discounts (with applied code labels), shipping, tax, and **total paid**. The `OrderSummary` object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `promotions[]`.
+
+A step indicator (`CheckoutSteps.tsx`) shows progress for cart -> shipping -> payment -> done. The upsell is intentionally not a visible progress step. `CheckoutPage.tsx` owns the cart/order state, the active processor + adapter, the upsell flow session, and the current step.
+
+### Flow Builder driven upsell sequence (`src/lib/upsell-flow.ts` + `src/lib/flow-types.ts`)
+
+The post-purchase upsells are driven by the OmniCart **Flow Builder**, a merchant-designed directed graph of offer nodes (mirror of the Delegate `UpsellButton` model). Each node carries its accept CTA, price (or multi-accept 1/2/3 packs), an optional server-enforced timer, and `success_next_button_id` / `decline_next_button_id` branches plus terminal flags. The upsell runs **regardless of which initial processor charged the order** - the charge adapter and the upsell engine are decoupled.
+
+After the initial charge, `CheckoutPage.handlePaid` calls `startUpsellFlow({ orderId, originalOrderTotal })` to resolve the entry node. Each Accept/Decline calls `stepUpsellFlow({ session, action, variantId })` -> `/api/upsell/click`; the runtime charges the saved payment method on accept (anti-tamper: re-resolves price server-side) and returns the next node until `is_terminal`.
+
+* **Multi-accept nodes**: when a node has `accept_options`, `UpsellStep` shows a selector and sends the chosen option `id` as `variantId`.
+* **Branching**: design upsell -> downsell flows by pointing a node's `decline_next_button_id` at a cheaper node.
+* **Demo fallback**: when no backend is configured, the client walks the in-browser `DEMO_FLOW_NODES` (a 2-offer upsell->downsell + multi-accept example).
+
+Keep offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components - `UpsellStep` is a pure node renderer.
+
+## Styling
+
+* Generate a **fully responsive**, polished checkout UI.
+* Use the preinstalled **Shadcn/UI** components from `@/components/ui/...` (Button, Input, Card, Label, Separator, RadioGroup, Badge, Skeleton) rather than custom equivalents.
+* Use Tailwind spacing, layout and typography utilities. Icons come from `lucide-react`.
+
+## Routing (CRITICAL)
+
+Uses `createBrowserRouter` - do NOT switch to `BrowserRouter`/`HashRouter`/`MemoryRouter`. If you switch routers, `RouteErrorBoundary`/`useRouteError()` will break.
+
+**Add routes in `src/main.tsx`:**
+```tsx
+const router = createBrowserRouter([
+  { path: "/", element: <CheckoutPage />, errorElement: <RouteErrorBoundary /> },
+]);
+```
+
+**Navigation:** `import { Link } from 'react-router-dom'` then `<Link to="/">...</Link>`.
+
+**Don't:**
+* Use `BrowserRouter`, `HashRouter`, `MemoryRouter`
+* Remove `errorElement` from routes
+* Use `useRouteError()` in your own components
+
+## UI Components
+
+All ShadCN components are in `./src/components/ui/*`. Import and use them directly:
+```tsx
+import { Button } from "@/components/ui/button";
+```
+**Do not rewrite these components.**
+
+---
+
+# Environment Variables (deployment)
+
+Configured in `wrangler.jsonc` / dashboard (do NOT edit `wrangler.jsonc` from the app):
+
+* **OMNICART_BACKEND_URL** - the OmniCart commerce backend base URL (storefront + OmniCart charge adapter).
+* **OMNICART_PUBLISHABLE_KEY** - the OmniCart storefront publishable key (injected server-side by the proxy).
+* **STRIPE_CHECKOUT_BACKEND_URL** - backend base URL for the **Stripe** charge adapter (`/api/checkout/stripe/*`).
+* **KONNEKTIVE_CHECKOUT_BACKEND_URL** - backend base URL for the **Konnektive** charge adapter (`/api/checkout/konnektive/*`).
+* **STICKYIO_CHECKOUT_BACKEND_URL** - backend base URL for the **Sticky.io** charge adapter (`/api/checkout/stickyio/*`).
+* **OMNICART_UPSELL_RUNTIME_URL** - base URL of the OmniCart **Flow Builder** upsell runtime.
+* **OMNICART_UPSELL_RUNTIME_TOKEN** - service token for the upsell runtime (Bearer, server-side only).
+* **STRIPE_PUBLISHABLE_KEY** - Stripe publishable key, returned to the browser via `/api/omnicart-config`.
+
+Each processor's charge backend is independent: leave a processor's env var unset and that processor's `/api/checkout/:kind/*` calls return `503 { demo: true }`, so the adapter runs in demo mode while the others stay live.
+
+# Important Notes
+
+* The cart -> shipping -> payment -> **upsell sequence** -> confirmation flow is the core of this template. Build your storefront around it rather than replacing it.
+* The initial charge is **processor-agnostic** - add or swap a gateway by implementing a `CheckoutProcessorAdapter` (manifest entry + registry thunk), not by editing `CheckoutPage`.
+* The upsell offers are driven by the Flow Builder graph, not hardcoded in `UpsellStep`, and run regardless of the initial processor.
+* Keep secrets server-side: only the Stripe **publishable** key and OmniCart public config ever reach the browser.
+* **Do not edit/add/remove worker bindings or touch `wrangler.jsonc`/`wrangler.toml`.** Build around what is provided.
