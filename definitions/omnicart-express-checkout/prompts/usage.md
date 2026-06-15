@@ -22,7 +22,9 @@ await omnicart.carts.lineItems.create(cart.id, { variant_id, quantity: 1 });
 ## Worker API (`worker/userRoutes.ts`)
 
 * `/api/omnicart/*` — proxies the OmniCart storefront API to the configured backend, attaching `x-publishable-api-key` server-side. **Use it without modification** for all storefront calls.
-* `/api/omnicart-config` — returns browser-safe config (the Stripe publishable key) for initializing Stripe Elements. Fetch this on the payment step.
+* `/api/upsell/session` (POST) — initializes a post-purchase upsell session for a paid order via the OmniCart **Flow Builder** runtime; returns `{ session, entry_node }`.
+* `/api/upsell/click` (GET) — accepts/declines the current offer node and walks the flow graph; on accept it charges the saved payment method (one-click). Returns the next node or a terminal result. **Use without modification.**
+* `/api/omnicart-config` — returns browser-safe config (the Stripe publishable key + whether the backend/upsell runtime are configured) for initializing Stripe Elements and choosing live-vs-demo upsells. Fetch this on the payment step.
 
 ## Stripe payment
 
@@ -42,14 +44,22 @@ The single-page checkout advances through these steps. Keep them as components u
 1. **Cart** (`CartStep.tsx`) — line items, quantities, subtotal/total via `formatAmount`.
 2. **Shipping** (`ShippingStep.tsx`) — address form + shipping option selection.
 3. **Payment** (`PaymentStep.tsx`) — Stripe Elements card form; creates the payment session and completes the cart.
-4. **Upsell** (`UpsellStep.tsx`) — **post-purchase one-click upsell** shown after payment is captured. Accepting charges the *same* saved payment method for an extra item (no re-entering card details) and appends it to the order; declining proceeds to confirmation.
-5. **Confirmation** (`ConfirmationStep.tsx`) — order summary after a successful purchase, reflecting any accepted upsell.
+4. **Upsell** (`UpsellStep.tsx`) — **Flow Builder driven post-purchase upsell sequence** shown after payment is captured. Renders the *current* flow node (offer); accepting charges the *same* saved payment method (no re-entering card details) and walks the success branch, declining walks the decline branch. The page loops through multiple offers until a terminal node, then proceeds to confirmation.
+5. **Confirmation** (`ConfirmationStep.tsx`) — order summary after a successful purchase, reflecting **every** accepted upsell from the flow journey.
 
-A step indicator (`CheckoutSteps.tsx`) shows progress for the core cart → shipping → payment → done steps. The upsell is intentionally not a visible progress step — it appears as a bonus offer between payment capture and confirmation. `CheckoutPage.tsx` owns the cart/order state and current step, passing them down.
+A step indicator (`CheckoutSteps.tsx`) shows progress for the core cart → shipping → payment → done steps. The upsell is intentionally not a visible progress step — the offer sequence appears as bonus offers between payment capture and confirmation. `CheckoutPage.tsx` owns the cart/order state, the upsell flow session, and the current step.
 
-### Post-purchase one-click upsell
+### Flow Builder driven upsell sequence (`src/lib/upsell-flow.ts` + `src/lib/flow-types.ts`)
 
-The upsell is the classic funnel-style offer: after the customer's payment method is captured, present a one-time offer that can be added to the existing order with a single click. To wire it to a live OmniCart backend, in `CheckoutPage.handleAcceptUpsell` call the `omnicart` client to add the upsell variant to the order using the already-captured payment session, instead of the demo timeout. Fetch the real offer (e.g. per completed cart/order) rather than using `DEMO_UPSELL`.
+The post-purchase upsells are **not** a single hardcoded offer — they are driven by the OmniCart **Flow Builder**, a merchant-designed directed graph of offer nodes (mirror of the Delegate `UpsellButton` model). Each node carries its accept CTA, price (or multi-accept options like 1/2/3 packs), an optional server-enforced timer, and `success_next_button_id` / `decline_next_button_id` branches plus terminal flags.
+
+After payment, `CheckoutPage.handlePaid` calls `startUpsellFlow({ orderId, originalOrderTotal })` to initialize a session and resolve the entry node. Each Accept/Decline calls `stepUpsellFlow({ session, action, variantId })`, which hits `/api/upsell/click` — the runtime charges the saved payment method on accept (anti-tamper: it re-resolves price server-side), records the journey step, and returns the next node. The page renders that node and repeats until `is_terminal` (or no next node), then advances to confirmation.
+
+* **Multi-accept nodes**: when a node has `accept_options`, `UpsellStep` shows a selector and sends the chosen option `id` as `variantId`.
+* **Branching**: design upsell → downsell flows by pointing a node's `decline_next_button_id` at a cheaper downsell node.
+* **Demo fallback**: when no backend is configured (`/api/omnicart-config` reports `backendConfigured: false`), the client walks the in-browser `DEMO_FLOW_NODES` (a 2-offer upsell→downsell + multi-accept example) so the generated page renders a full multi-upsell journey out of the box. Replace by wiring the runtime env vars below and fetching the merchant's real flow.
+
+Keep the offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components — `UpsellStep` is a pure node renderer.
 
 ## Styling
 
@@ -92,10 +102,13 @@ Configured in `wrangler.jsonc` / dashboard (do NOT edit `wrangler.jsonc` from th
 
 * **OMNICART_BACKEND_URL** — the OmniCart commerce backend base URL.
 * **OMNICART_PUBLISHABLE_KEY** — the OmniCart storefront publishable key (injected server-side by the proxy).
+* **OMNICART_UPSELL_RUNTIME_URL** — base URL of the OmniCart **Flow Builder** upsell runtime (drives the post-purchase offer sequence).
+* **OMNICART_UPSELL_RUNTIME_TOKEN** — service token for the upsell runtime (attached as a Bearer token server-side; never reaches the browser).
 * **STRIPE_PUBLISHABLE_KEY** — Stripe publishable key, returned to the browser via `/api/omnicart-config`.
 
 # Important Notes
 
-* The cart → shipping → payment → confirmation flow is the core of this template. Build your storefront around it rather than replacing it.
+* The cart → shipping → payment → **upsell sequence** → confirmation flow is the core of this template. Build your storefront around it rather than replacing it.
+* The upsell offers are driven by the Flow Builder graph (`src/lib/flow-types.ts` / the live runtime), not hardcoded in `UpsellStep`. Add or reorder offers by editing the flow, not the component.
 * Keep secrets server-side: only the Stripe **publishable** key and OmniCart public config ever reach the browser.
 * **Do not edit/add/remove worker bindings or touch `wrangler.jsonc`/`wrangler.toml`.** Build around what is provided.

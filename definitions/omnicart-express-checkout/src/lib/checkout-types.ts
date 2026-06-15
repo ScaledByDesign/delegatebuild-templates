@@ -13,6 +13,11 @@ export type CheckoutStepId =
   | "upsell"
   | "confirmation";
 
+// The post-purchase upsell sequence is driven by the OmniCart Flow Builder
+// (see lib/flow-types.ts + lib/upsell-flow.ts). The "upsell" step renders the
+// current flow node; the page walks the graph node-by-node until a terminal
+// node, then shows confirmation. Offer content lives in the flow, not here.
+
 // The upsell step is intentionally omitted from the visible progress indicator:
 // a post-purchase one-click upsell appears *after* the payment is captured but
 // *before* the final confirmation, and should feel like a bonus offer rather
@@ -23,39 +28,6 @@ export const CHECKOUT_STEPS: { id: CheckoutStepId; label: string }[] = [
   { id: "payment", label: "Payment" },
   { id: "confirmation", label: "Done" },
 ];
-
-/**
- * A post-purchase one-click upsell offer.
- *
- * After the customer's payment method is captured, OmniCart can present a
- * one-click offer that charges the *same* saved payment method for an extra
- * item — no re-entering card details. Accepting appends the item to the order.
- */
-export interface UpsellOffer {
-  id: string;
-  variant_id: string;
-  title: string;
-  pitch: string;
-  /** Original price in minor units (e.g. cents). */
-  original_price: number;
-  /** One-click offer price in minor units (the discounted upsell price). */
-  offer_price: number;
-}
-
-/**
- * Demo post-purchase upsell offer, shown when no OmniCart backend is wired yet.
- * Replace by fetching a real upsell offer for the completed order/cart from the
- * `omnicart` client.
- */
-export const DEMO_UPSELL: UpsellOffer = {
-  id: "upsell_warranty_bundle",
-  variant_id: "var_upsell_1",
-  title: "OmniCart Care+ Protection Plan",
-  pitch:
-    "Add 2-year accidental damage coverage to your order. One-time offer at checkout — added to this order with one click using the card you just used.",
-  original_price: 2900,
-  offer_price: 1900,
-};
 
 export interface ShippingAddress {
   first_name: string;

@@ -11,15 +11,18 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import type { OmniCart } from "@/lib/omnicart";
 import {
   DEMO_CART,
-  DEMO_UPSELL,
   EMPTY_ADDRESS,
   cartSubtotal,
   type CheckoutStepId,
   type OrderSummary as OrderSummaryData,
   type ShippingAddress,
   type ShippingOption,
-  type UpsellOffer,
 } from "@/lib/checkout-types";
+import {
+  startUpsellFlow,
+  stepUpsellFlow,
+} from "@/lib/upsell-flow";
+import type { FlowNode, FlowSession } from "@/lib/flow-types";
 
 const SHIPPING_OPTIONS: ShippingOption[] = [
   { id: "ship_standard", name: "Standard (5–7 days)", amount: 0 },
@@ -28,11 +31,19 @@ const SHIPPING_OPTIONS: ShippingOption[] = [
 ];
 
 /**
- * OmniCart Express Checkout — single-page guided checkout.
+ * OmniCart Express Checkout — single-page guided checkout with a Flow Builder
+ * driven post-purchase upsell sequence.
  *
  * OmniCart is the whitelabel commerce brand; it is powered internally by the
  * Medusa commerce framework. Wire the `omnicart` client (src/lib/omnicart.ts)
- * to a live OmniCart backend to replace the demo cart and shipping options.
+ * to a live OmniCart backend to replace the demo cart and shipping options, and
+ * wire the OmniCart Flow Builder runtime (src/lib/upsell-flow.ts) to drive the
+ * real multi-offer upsell graph after payment.
+ *
+ * Post-payment flow:
+ *   payment captured → start upsell session → render current flow node →
+ *   Accept (1-click charge, walk success branch) / Decline (walk decline
+ *   branch) → repeat until a terminal node → confirmation.
  */
 export function CheckoutPage() {
   const [step, setStep] = useState<CheckoutStepId>("cart");
@@ -40,6 +51,13 @@ export function CheckoutPage() {
   const [address, setAddress] = useState<ShippingAddress>(EMPTY_ADDRESS);
   const [shippingOptionId, setShippingOptionId] = useState<string>(SHIPPING_OPTIONS[0].id);
   const [order, setOrder] = useState<OrderSummaryData | null>(null);
+
+  // ── Upsell flow state ──────────────────────────────────────────────────────
+  // The session is the runtime cursor; `flowNode` is the offer currently shown.
+  // `offerIndex` is a 1-based counter for the "Exclusive offer N" affordance.
+  const [flowSession, setFlowSession] = useState<FlowSession | null>(null);
+  const [flowNode, setFlowNode] = useState<FlowNode | null>(null);
+  const [offerIndex, setOfferIndex] = useState(0);
 
   const shippingAmount = useMemo(
     () => SHIPPING_OPTIONS.find((o) => o.id === shippingOptionId)?.amount ?? 0,
@@ -68,44 +86,82 @@ export function CheckoutPage() {
     return subtotal + shippingAmount + tax;
   }, [cart.items, shippingAmount]);
 
-  // Payment captured: create the order, then present the one-click upsell
-  // before showing the final confirmation.
-  const handlePaid = () => {
-    setOrder({
+  // Advance to confirmation, reconciling the order total + line items with the
+  // accepted upsells recorded in the flow session journey.
+  const finishToConfirmation = (session: FlowSession | null, baseOrder: OrderSummaryData) => {
+    if (!session) {
+      setOrder(baseOrder);
+    } else {
+      // Append a synthetic line per accepted (revenue > 0) journey step so the
+      // receipt reflects every one-click add-on charged during the flow.
+      const upsellItems = session.journey
+        .filter((j) => j.action === "success" && j.revenue > 0)
+        .map((j, idx) => ({
+          id: `${j.button_id}_${idx}`,
+          title: j.button_text,
+          quantity: 1,
+          unit_price: j.revenue,
+          thumbnail: null,
+          variant: { id: j.button_id, title: "One-click add-on" },
+        }));
+      setOrder({
+        ...baseOrder,
+        total: session.total_revenue,
+        items: [...baseOrder.items, ...upsellItems],
+      });
+    }
+    setFlowNode(null);
+    setStep("confirmation");
+  };
+
+  // Payment captured: create the order, then start the Flow Builder upsell
+  // sequence. If the flow has no offers, skip straight to confirmation.
+  const handlePaid = async () => {
+    const baseOrder: OrderSummaryData = {
       id: `order_${Math.random().toString(36).slice(2, 10)}`,
       email: address.email || "customer@example.com",
       total: grandTotal,
       currency_code: currency,
       items: cart.items,
+    };
+    setOrder(baseOrder);
+
+    const { session, entry_node } = await startUpsellFlow({
+      orderId: baseOrder.id,
+      originalOrderTotal: grandTotal,
+      currencyCode: currency,
     });
-    setStep("upsell");
+    setFlowSession(session);
+
+    if (entry_node && session.current_button_id) {
+      setFlowNode(entry_node);
+      setOfferIndex(1);
+      setStep("upsell");
+    } else {
+      finishToConfirmation(session, baseOrder);
+    }
   };
 
-  // One-click upsell accepted: charge the same saved payment method and append
-  // the upsell item to the existing order. In a wired backend, call the
-  // `omnicart` client here to add the variant to the order's payment session.
-  const handleAcceptUpsell = async (offer: UpsellOffer) => {
-    await new Promise((r) => setTimeout(r, 500));
-    setOrder((prev) =>
-      prev
-        ? {
-            ...prev,
-            total: prev.total + offer.offer_price,
-            items: [
-              ...prev.items,
-              {
-                id: offer.id,
-                title: offer.title,
-                quantity: 1,
-                unit_price: offer.offer_price,
-                thumbnail: null,
-                variant: { id: offer.variant_id, title: "One-click add-on" },
-              },
-            ],
-          }
-        : prev,
-    );
-    setStep("confirmation");
+  // Accept the current offer: charge the saved payment method (1-click) and
+  // walk the success branch. Decline walks the decline branch. Either way we
+  // render the next node or advance to confirmation on a terminal node.
+  const handleFlowStep = async (action: "accept" | "decline", variantId: string | null) => {
+    if (!flowSession || !order) return;
+    const result = await stepUpsellFlow({ session: flowSession, action, variantId });
+    setFlowSession(result.session);
+
+    // A card decline on accept: keep the customer on the same offer so they can
+    // retry or decline. (A production page may surface result.payment_error.)
+    if (action === "accept" && result.payment_error) {
+      return;
+    }
+
+    if (result.is_terminal || !result.next_node) {
+      finishToConfirmation(result.session, order);
+      return;
+    }
+    setFlowNode(result.next_node);
+    setOfferIndex((n) => n + 1);
   };
 
   const startOver = () => {
@@ -113,6 +169,9 @@ export function CheckoutPage() {
     setAddress(EMPTY_ADDRESS);
     setShippingOptionId(SHIPPING_OPTIONS[0].id);
     setOrder(null);
+    setFlowSession(null);
+    setFlowNode(null);
+    setOfferIndex(0);
     setStep("cart");
   };
 
@@ -175,12 +234,12 @@ export function CheckoutPage() {
                 onPaid={handlePaid}
               />
             )}
-            {step === "upsell" && (
+            {step === "upsell" && flowNode && (
               <UpsellStep
-                offer={DEMO_UPSELL}
-                currency={currency}
-                onAccept={handleAcceptUpsell}
-                onDecline={() => setStep("confirmation")}
+                node={flowNode}
+                offerIndex={offerIndex}
+                onAccept={(variantId) => handleFlowStep("accept", variantId)}
+                onDecline={() => handleFlowStep("decline", null)}
               />
             )}
             {step === "confirmation" && order && (
