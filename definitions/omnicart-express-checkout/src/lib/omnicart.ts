@@ -464,6 +464,22 @@ export function initPaymentSession(
   );
 }
 
+/**
+ * Extract the Stripe PaymentIntent `client_secret` from an initialized OmniCart
+ * payment collection. Medusa stores it under the payment session's `data`. The
+ * browser uses it to confirm the card on-page via Stripe Elements.
+ */
+export function clientSecretFromCollection(
+  pc: OmniCartPaymentCollection | undefined,
+): string | undefined {
+  if (!pc?.payment_sessions?.length) return undefined;
+  for (const s of pc.payment_sessions) {
+    const cs = (s.data ?? {}).client_secret;
+    if (typeof cs === "string" && cs.length > 0) return cs;
+  }
+  return undefined;
+}
+
 /** Result of completing a cart: either a placed order, or a cart-level error. */
 export interface CompleteResult {
   ok: boolean;

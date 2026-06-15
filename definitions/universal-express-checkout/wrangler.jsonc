@@ -1,10 +1,15 @@
 /**
- * Wrangler config for the OmniCart Express Checkout template.
+ * Wrangler config for the Universal Express Checkout template.
  * STRICTLY DO NOT MODIFY THIS FILE - Hidden from AI to prevent breaking core functionality
+ *
+ * `vars` here are NON-SECRET defaults (demo placeholders). The merchant sets the
+ * real per-processor backend URLs + the upsell-runtime URL as plain vars, and
+ * any secret (e.g. OMNICART_UPSELL_RUNTIME_TOKEN) via `wrangler secret put`
+ * after generation. The worker (worker/userRoutes.ts) reads each of these.
  */
  {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "omnicart-express-checkout",
+	"name": "universal-express-checkout",
 	"main": "worker/index.ts",
 	"compatibility_date": "2025-04-24",
 	"assets": {
@@ -16,6 +21,11 @@
 	},
 	"vars": {
 		"OMNICART_BACKEND_URL": "https://demo.omnicart.commerce",
-		"OMNICART_PUBLISHABLE_KEY": ""
+		"OMNICART_PUBLISHABLE_KEY": "",
+		"STRIPE_PUBLISHABLE_KEY": "",
+		"STRIPE_CHECKOUT_BACKEND_URL": "",
+		"KONNEKTIVE_CHECKOUT_BACKEND_URL": "",
+		"STICKYIO_CHECKOUT_BACKEND_URL": "",
+		"OMNICART_UPSELL_RUNTIME_URL": ""
 	}
 }

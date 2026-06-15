@@ -5,7 +5,7 @@ import { CheckoutSteps } from "@/components/checkout/CheckoutSteps";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
-import { PaymentStep } from "@/components/checkout/PaymentStep";
+import { PaymentStep, type PaymentResult } from "@/components/checkout/PaymentStep";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   applyDiscount,
@@ -20,6 +20,7 @@ import {
   listPaymentProviders,
   createPaymentCollection,
   initPaymentSession,
+  clientSecretFromCollection,
   completeCart,
   type OmniCart,
   type OmniCartPromotion,
@@ -115,6 +116,12 @@ export function CheckoutPage() {
   const [shippingOptionId, setShippingOptionId] = useState<string>(DEMO_SHIPPING_OPTIONS[0].id);
   // Payment collection created for the live cart (drives initPaymentSession).
   const [paymentCollectionId, setPaymentCollectionId] = useState<string | null>(null);
+  // Stripe publishable key from /api/omnicart-config (empty in demo mode).
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>("");
+  // PaymentIntent client secret from the OmniCart payment session. Minted when
+  // the shopper reaches the payment step (live cart only); drives Stripe
+  // Elements in PaymentStep. Null in demo mode.
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
   // In-flight backend work + last recoverable error, surfaced inline.
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
@@ -149,6 +156,26 @@ export function CheckoutPage() {
     })();
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Load the Stripe publishable key so the payment step can mount Stripe
+  // Elements once a payment session (client secret) is minted. Empty in demo
+  // mode — PaymentStep then renders its simulated-success fallback.
+  useEffect(() => {
+    let active = true;
+    fetch("/api/omnicart-config")
+      .then((r) => r.json() as Promise<{ data?: { stripePublishableKey?: string } }>)
+      .then((cfg) => {
+        if (active && cfg.data?.stripePublishableKey) {
+          setStripePublishableKey(cfg.data.stripePublishableKey);
+        }
+      })
+      .catch(() => {
+        /* fall back to demo mode */
+      });
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -319,6 +346,29 @@ export function CheckoutPage() {
           }
         }
         // If opts.demo: leave the demo shipping options in place and advance.
+
+        // Mint the Stripe payment session for the cart so the payment step can
+        // confirm the card on-page (Medusa pre-creates the PaymentIntent inside
+        // a store payment-session and exposes its client_secret).
+        const providers = await listPaymentProviders(cart.region_id || "");
+        const providerId =
+          providers.ok && providers.data && providers.data.length > 0
+            ? (providers.data.find((p) => p.id.startsWith("pp_stripe")) ?? providers.data[0]).id
+            : "pp_stripe_stripe";
+
+        const pc = await createPaymentCollection(cart.id);
+        if (pc.ok && pc.data) {
+          setPaymentCollectionId(pc.data.id);
+          const session = await initPaymentSession(pc.data.id, providerId);
+          if (session.ok && session.data) {
+            const cs = clientSecretFromCollection(session.data);
+            if (cs) setPaymentClientSecret(cs);
+          } else if (!session.demo) {
+            setFlowError(session.error ?? "Could not initialize payment.");
+          }
+        } else if (!pc.demo) {
+          setFlowError(pc.error ?? "Could not start payment.");
+        }
       } finally {
         setBusy(false);
       }
@@ -332,7 +382,7 @@ export function CheckoutPage() {
   // When the flow has no offers we go straight to the receipt (`/success`).
   // Route names mirror upw-sendpaylinks' CheckoutForm.handlePaymentSuccess:
   // create-session → upsellUrl `/upsell/{sessionId}`, else `/success`.
-  const handlePaid = async () => {
+  const handlePaid = async (payment?: PaymentResult) => {
     setFlowError(null);
     setPaying(true);
     try {
@@ -350,34 +400,11 @@ export function CheckoutPage() {
       };
 
       if (liveCart) {
-        // Create the payment collection + provider session, then complete the
-        // cart. The PaymentStep has already collected/confirmed the payment
-        // method on-page; completion authorizes and places the order.
-        const providers = await listPaymentProviders(cart.region_id || "");
-        const providerId =
-          providers.ok && providers.data && providers.data.length > 0
-            ? providers.data[0].id
-            : "pp_system_default";
-
-        let collectionId = paymentCollectionId;
-        if (!collectionId) {
-          const pc = await createPaymentCollection(cart.id);
-          if (pc.ok && pc.data) {
-            collectionId = pc.data.id;
-            setPaymentCollectionId(collectionId);
-          } else if (!pc.demo) {
-            setFlowError(pc.error ?? "Could not start payment.");
-            return;
-          }
-        }
-        if (collectionId) {
-          const session = await initPaymentSession(collectionId, providerId);
-          if (!session.ok && !session.demo) {
-            setFlowError(session.error ?? "Could not initialize payment.");
-            return;
-          }
-        }
-
+        // The PaymentStep has already confirmed the card / wallet on-page
+        // against the payment session minted at the shipping step
+        // (`paymentCollectionId` + the Stripe client secret). Completing the
+        // cart authorizes that PaymentIntent and places the order.
+        void paymentCollectionId;
         const completed = await completeCart(cart.id);
         if (completed.ok && completed.order) {
           const o = completed.order;
@@ -400,16 +427,27 @@ export function CheckoutPage() {
         // completed.demo: keep the synthesized demo order created above.
       }
 
-      // Start the post-purchase Flow Builder upsell session.
+      // Start the post-purchase Flow Builder upsell session. Thread the saved
+      // payment method so the upsell runtime can charge it off-session for
+      // 1-click upsells (the worker re-resolves pricing server-side; we only
+      // pass the stored-payment-method token / order linkage, never a price).
       const { session, entry_node } = await startUpsellFlow({
         orderId: baseOrder.id,
         originalOrderTotal: baseOrder.total,
         currencyCode: baseOrder.currency_code,
+        paymentMethodId: payment?.paymentMethodId,
+        paymentIntentId: payment?.paymentIntentId,
       });
 
       // Persist the handoff so the separate upsell/receipt routes can rehydrate
       // the paid order + flow cursor (mirror of server-side session retrieval).
-      saveHandoff({ code, order: baseOrder, session });
+      // The saved payment method rides along for the 1-click upsell charge.
+      saveHandoff({
+        code,
+        order: baseOrder,
+        session,
+        paymentMethodId: payment?.paymentMethodId,
+      });
 
       if (entry_node && session.current_button_id) {
         // Hand off to the FIRST upsell offer page. Each offer is its own route.
@@ -494,6 +532,8 @@ export function CheckoutPage() {
               <PaymentStep
                 amount={grandTotal}
                 currency={currency}
+                stripePublishableKey={stripePublishableKey}
+                clientSecret={paymentClientSecret}
                 busy={paying}
                 onBack={() => setSection("shipping")}
                 onPaid={handlePaid}
