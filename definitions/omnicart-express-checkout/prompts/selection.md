@@ -1,11 +1,11 @@
 # Template Selection Guidelines
 
-This template provides a production-ready **OmniCart Express Checkout** storefront: a single-page, guided checkout that walks a shopper through cart review → shipping details → payment → a **Flow Builder driven post-purchase upsell sequence** (multiple one-click offers, upsell/downsell branching) → order confirmation. It ships with a server-side commerce proxy, Stripe payment integration, and an OmniCart **Flow Builder** upsell runtime client so the builder can generate a complete, working checkout page — with a real multi-offer funnel — out of the box.
+This template provides a production-ready **OmniCart Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout: **`/c/:code`** (the public checkout one-pager — cart review → shipping → payment on-page sections), **`/upsell/:sessionId`** (a **Flow Builder driven post-purchase upsell**, one one-click offer per route, with upsell/downsell branching), and **`/success`** (the itemized receipt). `/` redirects into `/c/:code` — there is no separate homepage/storefront landing. It ships with a server-side commerce proxy, Stripe payment integration, and an OmniCart **Flow Builder** upsell runtime client so the builder can generate a complete, working checkout page — with a real multi-offer funnel — out of the box.
 
 > Internal note (developers only): OmniCart is the whitelabel commerce brand. It is powered under the hood by the **Medusa** commerce framework via the `@medusajs/medusa-js` SDK. All user-facing copy, components, and routes use **OmniCart** naming — "Medusa" is only an internal framework reference and must never surface in generated UI.
 
 * Use this template when you need:
-  * An e-commerce checkout or "express checkout" flow (cart, shipping, payment, confirmation)
+  * An e-commerce checkout or "express checkout" flow (cart, shipping, payment on `/c/:code`, then `/upsell/:sessionId` offers, then `/success`)
   * A post-purchase **multi-offer upsell funnel** (one-click upsell → downsell → ...) driven by the OmniCart **Flow Builder**, each offer charged to the saved payment method
   * A storefront that completes a purchase against a headless commerce backend (OmniCart)
   * Stripe-powered card payments with a polished, multi-step UI

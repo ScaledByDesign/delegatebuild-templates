@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
 import { CheckoutSteps } from "@/components/checkout/CheckoutSteps";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
 import { PaymentStep } from "@/components/checkout/PaymentStep";
-import { UpsellStep } from "@/components/checkout/UpsellStep";
-import { ConfirmationStep } from "@/components/checkout/ConfirmationStep";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   applyDiscount,
@@ -30,16 +29,20 @@ import {
   EMPTY_ADDRESS,
   cartSubtotal,
   resolveDemoCoupon,
-  type CheckoutStepId,
   type OrderSummary as OrderSummaryData,
   type ShippingAddress,
   type ShippingOption,
 } from "@/lib/checkout-types";
-import {
-  startUpsellFlow,
-  stepUpsellFlow,
-} from "@/lib/upsell-flow";
-import type { FlowNode, FlowSession } from "@/lib/flow-types";
+import { startUpsellFlow } from "@/lib/upsell-flow";
+import { saveHandoff } from "@/lib/checkout-session-store";
+
+// On-page section of the one-pager checkout. NOTE: this is NOT a homepage and
+// NOT a standalone "cart summary" landing — `/c/:code` IS the checkout.
+// `cart` is the line-item review at the top of the same page; shipping and
+// payment reveal inline below it. The post-purchase upsell and the receipt are
+// SEPARATE routes (`/upsell/:sessionId`, `/success`) — route names that mirror
+// the upw-sendpaylinks headless checkout exactly.
+type CheckoutSection = "cart" | "shipping" | "payment";
 
 // Demo shipping options used when no OmniCart backend is configured. Once a
 // live backend is wired, these are replaced at the shipping step by the real
@@ -51,8 +54,13 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
 ];
 
 /**
- * OmniCart Express Checkout - single-page guided checkout with a Flow Builder
- * driven post-purchase upsell sequence.
+ * OmniCart Express Checkout — the public checkout page at `/c/:code`.
+ *
+ * Mirrors upw-sendpaylinks' `app/c/[code]/page.tsx`: the route is keyed by a
+ * short checkout code that resolves the order payload, there is NO homepage /
+ * storefront / cart-summary landing, and the page renders straight into the
+ * checkout (its `CheckoutForm`). The shopper reviews line items, enters
+ * shipping, and pays — all on this one page.
  *
  * OmniCart is the whitelabel commerce brand; it is powered internally by the
  * Medusa commerce framework. The full v2 cart lifecycle is wired here:
@@ -63,7 +71,13 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
  *                   addShippingMethod
  *   payment      -> createPaymentCollection + initPaymentSession (provider) and
  *                   completeCart on capture
- *   upsell       -> OmniCart Flow Builder one-click sequence (lib/upsell-flow)
+ *
+ * On a successful charge it starts the Flow Builder upsell session and HANDS
+ * OFF to `/upsell/:sessionId` (the first upsell OFFER PAGE) — or, when the flow
+ * has no offers, straight to `/success`. Each upsell offer is its own route so
+ * the builder can author bespoke, fully-designed upsell pages. Route names
+ * mirror upw-sendpaylinks' CheckoutForm.handlePaymentSuccess handoff exactly:
+ * create-session → upsellUrl `/upsell/{sessionId}`, else `/success`.
  *
  * Every backend call degrades gracefully: when no backend is configured the
  * Worker proxy returns a `503 { demo: true }` signal, the client reports
@@ -71,7 +85,13 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
  * template renders a realistic flow out of the box.
  */
 export function CheckoutPage() {
-  const [step, setStep] = useState<CheckoutStepId>("cart");
+  // The checkout short code from the route. Mirrors `params.code` in
+  // upw-sendpaylinks' `/c/[code]`; a live build resolves the order payload
+  // from it via `resolveCheckoutLink(code)`.
+  const { code = "demo" } = useParams<{ code: string }>();
+  const navigate = useNavigate();
+
+  const [section, setSection] = useState<CheckoutSection>("cart");
   const [cart, setCart] = useState<OmniCart>(DEMO_CART);
   // True once a live OmniCart backend has created/returned a real cart. In this
   // mode all cart mutations go through the backend, which is authoritative.
@@ -93,19 +113,12 @@ export function CheckoutPage() {
   // replaced with the backend's options once the cart goes live.
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>(DEMO_SHIPPING_OPTIONS);
   const [shippingOptionId, setShippingOptionId] = useState<string>(DEMO_SHIPPING_OPTIONS[0].id);
-  const [order, setOrder] = useState<OrderSummaryData | null>(null);
   // Payment collection created for the live cart (drives initPaymentSession).
   const [paymentCollectionId, setPaymentCollectionId] = useState<string | null>(null);
   // In-flight backend work + last recoverable error, surfaced inline.
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
-
-  // -- Upsell flow state ------------------------------------------------------
-  // The session is the runtime cursor; `flowNode` is the offer currently shown.
-  // `offerIndex` is a 1-based counter for the "Exclusive offer N" affordance.
-  const [flowSession, setFlowSession] = useState<FlowSession | null>(null);
-  const [flowNode, setFlowNode] = useState<FlowNode | null>(null);
-  const [offerIndex, setOfferIndex] = useState(0);
 
   // -- Lifecycle bootstrap ----------------------------------------------------
   // On mount, try to create a real OmniCart cart and seed it with the demo
@@ -310,167 +323,111 @@ export function CheckoutPage() {
         setBusy(false);
       }
     }
-    setStep("payment");
-  };
-
-  // Advance to confirmation, reconciling the order total + line items with the
-  // accepted upsells recorded in the flow session journey.
-  const finishToConfirmation = (session: FlowSession | null, baseOrder: OrderSummaryData) => {
-    if (!session) {
-      setOrder(baseOrder);
-    } else {
-      // Append a synthetic line per accepted (revenue > 0) journey step so the
-      // receipt reflects every one-click add-on charged during the flow.
-      const upsellItems = session.journey
-        .filter((j) => j.action === "success" && j.revenue > 0)
-        .map((j, idx) => ({
-          id: `${j.button_id}_${idx}`,
-          title: j.button_text,
-          quantity: 1,
-          unit_price: j.revenue,
-          thumbnail: null,
-          variant: { id: j.button_id, title: "One-click add-on" },
-        }));
-      // One-click upsell add-ons are charged at their displayed price (no
-      // extra tax/shipping in the demo), so fold their revenue into both the
-      // subtotal and the charged total to keep the receipt math coherent.
-      const upsellTotal = upsellItems.reduce((sum, i) => sum + i.unit_price, 0);
-      setOrder({
-        ...baseOrder,
-        subtotal: baseOrder.subtotal + upsellTotal,
-        total: session.total_revenue,
-        items: [...baseOrder.items, ...upsellItems],
-      });
-    }
-    setFlowNode(null);
-    setStep("confirmation");
+    setSection("payment");
   };
 
   // Payment captured: complete the live cart into a real order when wired,
   // otherwise synthesize a demo order. Then start the Flow Builder upsell
-  // sequence; if the flow has no offers, skip straight to confirmation.
+  // session and HAND OFF to the first upsell offer route (`/upsell/:sessionId`).
+  // When the flow has no offers we go straight to the receipt (`/success`).
+  // Route names mirror upw-sendpaylinks' CheckoutForm.handlePaymentSuccess:
+  // create-session → upsellUrl `/upsell/{sessionId}`, else `/success`.
   const handlePaid = async () => {
     setFlowError(null);
-    let baseOrder: OrderSummaryData = {
-      id: `order_${Math.random().toString(36).slice(2, 10)}`,
-      email: address.email || "customer@example.com",
-      subtotal: subtotalAmount,
-      shipping_total: shippingAmount,
-      tax_total: taxAmount,
-      discount_total: discountAmount,
-      total: grandTotal,
-      currency_code: currency,
-      items: cart.items,
-      promotions,
-    };
+    setPaying(true);
+    try {
+      let baseOrder: OrderSummaryData = {
+        id: `order_${Math.random().toString(36).slice(2, 10)}`,
+        email: address.email || "customer@example.com",
+        subtotal: subtotalAmount,
+        shipping_total: shippingAmount,
+        tax_total: taxAmount,
+        discount_total: discountAmount,
+        total: grandTotal,
+        currency_code: currency,
+        items: cart.items,
+        promotions,
+      };
 
-    if (liveCart) {
-      // Create the payment collection + provider session, then complete the
-      // cart. The PaymentStep has already collected/confirmed the payment
-      // method on-page; completion authorizes and places the order.
-      const providers = await listPaymentProviders(cart.region_id || "");
-      const providerId =
-        providers.ok && providers.data && providers.data.length > 0
-          ? providers.data[0].id
-          : "pp_system_default";
+      if (liveCart) {
+        // Create the payment collection + provider session, then complete the
+        // cart. The PaymentStep has already collected/confirmed the payment
+        // method on-page; completion authorizes and places the order.
+        const providers = await listPaymentProviders(cart.region_id || "");
+        const providerId =
+          providers.ok && providers.data && providers.data.length > 0
+            ? providers.data[0].id
+            : "pp_system_default";
 
-      let collectionId = paymentCollectionId;
-      if (!collectionId) {
-        const pc = await createPaymentCollection(cart.id);
-        if (pc.ok && pc.data) {
-          collectionId = pc.data.id;
-          setPaymentCollectionId(collectionId);
-        } else if (!pc.demo) {
-          setFlowError(pc.error ?? "Could not start payment.");
+        let collectionId = paymentCollectionId;
+        if (!collectionId) {
+          const pc = await createPaymentCollection(cart.id);
+          if (pc.ok && pc.data) {
+            collectionId = pc.data.id;
+            setPaymentCollectionId(collectionId);
+          } else if (!pc.demo) {
+            setFlowError(pc.error ?? "Could not start payment.");
+            return;
+          }
+        }
+        if (collectionId) {
+          const session = await initPaymentSession(collectionId, providerId);
+          if (!session.ok && !session.demo) {
+            setFlowError(session.error ?? "Could not initialize payment.");
+            return;
+          }
+        }
+
+        const completed = await completeCart(cart.id);
+        if (completed.ok && completed.order) {
+          const o = completed.order;
+          baseOrder = {
+            id: o.id,
+            email: o.email || baseOrder.email,
+            subtotal: o.subtotal ?? subtotalAmount,
+            shipping_total: o.shipping_total ?? shippingAmount,
+            tax_total: o.tax_total ?? taxAmount,
+            discount_total: o.discount_total ?? discountAmount,
+            total: o.total ?? grandTotal,
+            currency_code: o.currency_code || currency,
+            items: o.items && o.items.length > 0 ? o.items : cart.items,
+            promotions: cart.promotions ?? promotions,
+          };
+        } else if (!completed.demo) {
+          setFlowError(completed.error ?? "We could not complete your order.");
           return;
         }
-      }
-      if (collectionId) {
-        const session = await initPaymentSession(collectionId, providerId);
-        if (!session.ok && !session.demo) {
-          setFlowError(session.error ?? "Could not initialize payment.");
-          return;
-        }
+        // completed.demo: keep the synthesized demo order created above.
       }
 
-      const completed = await completeCart(cart.id);
-      if (completed.ok && completed.order) {
-        const o = completed.order;
-        baseOrder = {
-          id: o.id,
-          email: o.email || baseOrder.email,
-          subtotal: o.subtotal ?? subtotalAmount,
-          shipping_total: o.shipping_total ?? shippingAmount,
-          tax_total: o.tax_total ?? taxAmount,
-          discount_total: o.discount_total ?? discountAmount,
-          total: o.total ?? grandTotal,
-          currency_code: o.currency_code || currency,
-          items: o.items && o.items.length > 0 ? o.items : cart.items,
-          promotions: cart.promotions ?? promotions,
-        };
-      } else if (!completed.demo) {
-        setFlowError(completed.error ?? "We could not complete your order.");
-        return;
+      // Start the post-purchase Flow Builder upsell session.
+      const { session, entry_node } = await startUpsellFlow({
+        orderId: baseOrder.id,
+        originalOrderTotal: baseOrder.total,
+        currencyCode: baseOrder.currency_code,
+      });
+
+      // Persist the handoff so the separate upsell/receipt routes can rehydrate
+      // the paid order + flow cursor (mirror of server-side session retrieval).
+      saveHandoff({ code, order: baseOrder, session });
+
+      if (entry_node && session.current_button_id) {
+        // Hand off to the FIRST upsell offer page. Each offer is its own route.
+        // Mirror: upw-sendpaylinks redirects to upsellUrl `/upsell/{sessionId}`.
+        navigate(
+          `/upsell/${encodeURIComponent(session.id)}?nodeId=${encodeURIComponent(entry_node.id)}`,
+          { state: { node: entry_node, offerIndex: 1 } },
+        );
+      } else {
+        // No upsell offers — go straight to the receipt.
+        // Mirror: upw-sendpaylinks redirects to `successUrl?orderId=&transactionId=`.
+        navigate(
+          `/success?session=${encodeURIComponent(session.id)}&orderId=${encodeURIComponent(baseOrder.id)}`,
+        );
       }
-      // completed.demo: keep the synthesized demo order created above.
+    } finally {
+      setPaying(false);
     }
-
-    setOrder(baseOrder);
-
-    const { session, entry_node } = await startUpsellFlow({
-      orderId: baseOrder.id,
-      originalOrderTotal: baseOrder.total,
-      currencyCode: baseOrder.currency_code,
-    });
-    setFlowSession(session);
-
-    if (entry_node && session.current_button_id) {
-      setFlowNode(entry_node);
-      setOfferIndex(1);
-      setStep("upsell");
-    } else {
-      finishToConfirmation(session, baseOrder);
-    }
-  };
-
-  // Accept the current offer: charge the saved payment method (1-click) and
-  // walk the success branch. Decline walks the decline branch. Either way we
-  // render the next node or advance to confirmation on a terminal node.
-  const handleFlowStep = async (action: "accept" | "decline", variantId: string | null) => {
-    if (!flowSession || !order) return;
-    const result = await stepUpsellFlow({ session: flowSession, action, variantId });
-    setFlowSession(result.session);
-
-    // A card decline on accept: keep the customer on the same offer so they can
-    // retry or decline. (A production page may surface result.payment_error.)
-    if (action === "accept" && result.payment_error) {
-      return;
-    }
-
-    if (result.is_terminal || !result.next_node) {
-      finishToConfirmation(result.session, order);
-      return;
-    }
-    setFlowNode(result.next_node);
-    setOfferIndex((n) => n + 1);
-  };
-
-  const startOver = () => {
-    setCart(DEMO_CART);
-    setLiveCart(false);
-    setPromotions([]);
-    setDemoDiscounts({});
-    setBackendPricing(false);
-    setAddress(EMPTY_ADDRESS);
-    setShippingOptions(DEMO_SHIPPING_OPTIONS);
-    setShippingOptionId(DEMO_SHIPPING_OPTIONS[0].id);
-    setPaymentCollectionId(null);
-    setFlowError(null);
-    setOrder(null);
-    setFlowSession(null);
-    setFlowNode(null);
-    setOfferIndex(0);
-    setStep("cart");
   };
 
   // Cart with current shipping/tax/discount reflected for the summary card.
@@ -501,7 +458,7 @@ export function CheckoutPage() {
 
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-8">
-          <CheckoutSteps current={step} />
+          <CheckoutSteps current={section} />
         </div>
 
         {flowError && (
@@ -512,15 +469,15 @@ export function CheckoutPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
           <section>
-            {step === "cart" && (
+            {section === "cart" && (
               <CartStep
                 cart={cart}
                 onUpdateQuantity={updateQuantity}
                 onRemove={removeItem}
-                onContinue={() => setStep("shipping")}
+                onContinue={() => setSection("shipping")}
               />
             )}
-            {step === "shipping" && (
+            {section === "shipping" && (
               <ShippingStep
                 address={address}
                 options={shippingOptions}
@@ -529,41 +486,29 @@ export function CheckoutPage() {
                 busy={busy}
                 onChangeAddress={setAddress}
                 onSelectOption={setShippingOptionId}
-                onBack={() => setStep("cart")}
+                onBack={() => setSection("cart")}
                 onContinue={handleShippingContinue}
               />
             )}
-            {step === "payment" && (
+            {section === "payment" && (
               <PaymentStep
                 amount={grandTotal}
                 currency={currency}
-                onBack={() => setStep("shipping")}
+                busy={paying}
+                onBack={() => setSection("shipping")}
                 onPaid={handlePaid}
               />
             )}
-            {step === "upsell" && flowNode && (
-              <UpsellStep
-                node={flowNode}
-                offerIndex={offerIndex}
-                onAccept={(variantId) => handleFlowStep("accept", variantId)}
-                onDecline={() => handleFlowStep("decline", null)}
-              />
-            )}
-            {step === "confirmation" && order && (
-              <ConfirmationStep order={order} onStartOver={startOver} />
-            )}
           </section>
 
-          {step !== "confirmation" && step !== "upsell" && (
-            <aside>
-              <OrderSummary
-                cart={summaryCart}
-                shippingAmount={shippingAmount}
-                onApplyCoupon={handleApplyCoupon}
-                onRemoveCoupon={handleRemoveCoupon}
-              />
-            </aside>
-          )}
+          <aside>
+            <OrderSummary
+              cart={summaryCart}
+              shippingAmount={shippingAmount}
+              onApplyCoupon={handleApplyCoupon}
+              onRemoveCoupon={handleRemoveCoupon}
+            />
+          </aside>
         </div>
       </main>
     </div>

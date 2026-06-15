@@ -14,6 +14,9 @@ import { formatAmount } from "@/lib/omnicart";
 interface PaymentStepProps {
   amount: number;
   currency: string;
+  /** True while the parent finalizes the order + bootstraps the upsell flow
+   *  after `onPaid` resolves (the page then navigates to `/upsell/:sessionId`). */
+  busy?: boolean;
   onBack: () => void;
   onPaid: () => void;
 }
@@ -102,7 +105,7 @@ function PaymentForm({
 }
 
 /** Step 3 — Stripe-powered payment for the OmniCart checkout. */
-export function PaymentStep({ amount, currency, onBack, onPaid }: PaymentStepProps) {
+export function PaymentStep({ amount, currency, busy = false, onBack, onPaid }: PaymentStepProps) {
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -159,7 +162,7 @@ export function PaymentStep({ amount, currency, onBack, onPaid }: PaymentStepPro
         </CardContent>
       </Card>
       <div className="flex justify-start">
-        <Button variant="outline" size="lg" onClick={onBack}>
+        <Button variant="outline" size="lg" onClick={onBack} disabled={busy}>
           Back to shipping
         </Button>
       </div>

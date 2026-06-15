@@ -6,27 +6,21 @@
  */
 import type { OmniCart, OmniCartPromotion, OmniCartLineItem } from "@/lib/omnicart";
 
-export type CheckoutStepId =
-  | "cart"
-  | "shipping"
-  | "payment"
-  | "upsell"
-  | "confirmation";
+// The on-page sections of the `/c/:code` one-pager checkout. Route names mirror
+// the upw-sendpaylinks headless checkout: the post-purchase upsell and the
+// receipt are SEPARATE routes (`/upsell/:sessionId`, `/success`) rather than
+// steps inside the checkout component, so the in-page step machine only covers
+// cart → shipping → payment.
+export type CheckoutStepId = "cart" | "shipping" | "payment";
 
 // The post-purchase upsell sequence is driven by the OmniCart Flow Builder
-// (see lib/flow-types.ts + lib/upsell-flow.ts). The "upsell" step renders the
-// current flow node; the page walks the graph node-by-node until a terminal
-// node, then shows confirmation. Offer content lives in the flow, not here.
-
-// The upsell step is intentionally omitted from the visible progress indicator:
-// a post-purchase one-click upsell appears *after* the payment is captured but
-// *before* the final confirmation, and should feel like a bonus offer rather
-// than another required checkout step.
+// (see lib/flow-types.ts + lib/upsell-flow.ts) and rendered on its own
+// per-offer routes (`/upsell/:sessionId`), so it does NOT appear in this checkout
+// progress indicator — it is a bonus offer after payment, not a checkout step.
 export const CHECKOUT_STEPS: { id: CheckoutStepId; label: string }[] = [
   { id: "cart", label: "Cart" },
   { id: "shipping", label: "Shipping" },
   { id: "payment", label: "Payment" },
-  { id: "confirmation", label: "Done" },
 ];
 
 export interface ShippingAddress {

@@ -1,6 +1,6 @@
 # Template Selection Guidelines
 
-This template provides a production-ready **Universal Express Checkout** storefront: a single-page, guided checkout that walks a shopper through cart review -> shipping details -> payment -> a **Flow Builder driven post-purchase upsell sequence** (multiple one-click offers, upsell/downsell branching) -> order confirmation. Unlike a single-gateway checkout, it is **processor-agnostic**: the initial charge runs through a pluggable `CheckoutProcessorAdapter` contract, with four real adapters shipped out of the box (Stripe, OmniCart, Konnektive, Sticky.io). The builder can target any of them - or switch between them at runtime - without changing the checkout UI.
+This template provides a production-ready **Universal Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout: **`/c/:code`** (the public checkout one-pager - cart review -> shipping -> payment on-page sections), **`/upsell/:sessionId`** (a **Flow Builder driven post-purchase upsell**, one one-click offer per route, with upsell/downsell branching), and **`/success`** (the itemized receipt). `/` redirects into `/c/:code` - there is no separate homepage/storefront landing. Unlike a single-gateway checkout, it is **processor-agnostic**: the initial charge runs through a pluggable `CheckoutProcessorAdapter` contract, with four real adapters shipped out of the box (Stripe, OmniCart, Konnektive, Sticky.io). The builder can target any of them - or switch between them at runtime - without changing the checkout UI.
 
 > Internal note (developers only): OmniCart is the whitelabel commerce brand. It is powered under the hood by the **Medusa** commerce framework via the `@medusajs/medusa-js` SDK. All user-facing copy, components, and routes use **OmniCart** naming - "Medusa" is only an internal framework reference and must never surface in generated UI.
 
@@ -14,7 +14,7 @@ The checkout is driven by a small contract (`src/lib/checkout/types.ts`) that ev
 A manifest (`src/lib/checkout/manifest.ts`) declares each processor's `id`, `label`, and `class`, and a capabilities map (`src/lib/checkout/capabilities.ts`) declares what each adapter can do across three tiers: **publish** (always supported), **render** (UI-surfaced, e.g. wallets), and **runtimeFallback** (e.g. SCA/3DS). A registry (`src/lib/checkout/registry.ts`) lazily resolves the active adapter, and a `ProcessorPicker` component lets the user choose one.
 
 * Use this template when you need:
-  * An e-commerce checkout or "express checkout" flow (cart, shipping, payment, confirmation)
+  * An e-commerce checkout or "express checkout" flow (cart, shipping, payment on `/c/:code`, then `/upsell/:sessionId` offers, then `/success`)
   * A **payment-processor-agnostic** checkout that can target Stripe, OmniCart, Konnektive, or Sticky.io behind one UI (or let you add another processor by implementing one adapter)
   * A post-purchase **multi-offer upsell funnel** (one-click upsell -> downsell -> ...) driven by the OmniCart **Flow Builder**, charged to the same order regardless of the initial processor
   * Stripe-powered or CRM-gateway card payments with a polished, multi-step UI

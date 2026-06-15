@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
 import { CheckoutSteps } from "@/components/checkout/CheckoutSteps";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
 import { PaymentStep } from "@/components/checkout/PaymentStep";
-import { UpsellStep } from "@/components/checkout/UpsellStep";
-import { ConfirmationStep } from "@/components/checkout/ConfirmationStep";
 import { ProcessorPicker } from "@/components/checkout/ProcessorPicker";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
@@ -27,22 +26,26 @@ import {
   EMPTY_ADDRESS,
   cartSubtotal,
   resolveDemoCoupon,
-  type CheckoutStepId,
   type OrderSummary as OrderSummaryData,
   type ShippingAddress,
   type ShippingOption,
 } from "@/lib/checkout-types";
-import {
-  startUpsellFlow,
-  stepUpsellFlow,
-} from "@/lib/upsell-flow";
-import type { FlowNode, FlowSession } from "@/lib/flow-types";
+import { startUpsellFlow } from "@/lib/upsell-flow";
+import { saveHandoff } from "@/lib/checkout-session-store";
 import { getCheckoutAdapter } from "@/lib/checkout/registry";
 import { PROCESSOR_CLASSES, type ProcessorKind } from "@/lib/checkout/manifest";
 import type {
   CheckoutProcessorAdapter,
   ChargeTarget,
 } from "@/lib/checkout/types";
+
+// On-page section of the one-pager checkout. NOTE: this is NOT a homepage and
+// NOT a standalone "cart summary" landing — `/c/:code` IS the checkout.
+// `cart` is the line-item review at the top of the same page; shipping and
+// payment reveal inline below it. The post-purchase upsell and the receipt are
+// SEPARATE routes (`/upsell/:sessionId`, `/success`) — route names that mirror
+// the upw-sendpaylinks headless checkout exactly.
+type CheckoutSection = "cart" | "shipping" | "payment";
 
 // Demo shipping options used when no OmniCart backend is configured. Once a
 // live backend is wired, these are replaced at the shipping step by the real
@@ -54,14 +57,18 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
 ];
 
 /**
- * Universal Express Checkout — single-page guided checkout that drives ANY
- * payment processor through one `CheckoutProcessorAdapter` contract, with a
- * Flow Builder post-purchase upsell sequence that runs uniformly for every
- * processor.
+ * Universal Express Checkout — the public checkout page at `/c/:code`.
  *
- * A `ProcessorPicker` selects the active processor (Stripe, OmniCart, Konnektive,
- * Sticky.io); the page resolves that processor's adapter from the registry and
- * charges through it:
+ * Mirrors upw-sendpaylinks' `app/c/[code]/page.tsx`: the route is keyed by a
+ * short checkout code that resolves the order payload, there is NO homepage /
+ * storefront / cart-summary landing, and the page renders straight into the
+ * checkout (its `CheckoutForm`). The
+ * shopper reviews line items, enters shipping, and pays — all on this one page.
+ *
+ * It drives ANY payment processor through one `CheckoutProcessorAdapter`
+ * contract. A `ProcessorPicker` selects the active processor (Stripe, OmniCart,
+ * Konnektive, Sticky.io); the page resolves that processor's adapter from the
+ * registry and charges through it:
  *
  *   payment-class (Stripe, OmniCart) → two-call browser flow:
  *       adapter.initPayment()  (collect_payment_method | confirm_client_secret)
@@ -69,19 +76,24 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
  *   CRM-class (Konnektive, Sticky.io) → single call:
  *       adapter.chargeInitial() only (no initPayment)
  *
- * The OmniCart cart lifecycle (createCart / line-item edits / shipping /
- * coupons) is retained as the commerce surface and powers the OmniCart adapter's
- * charge path; the other adapters charge their own backends through the Worker
- * proxy. The Flow Builder upsell (lib/upsell-flow) is processor-INDEPENDENT and
- * runs after every successful charge.
+ * On a successful charge it starts the Flow Builder upsell session and hands
+ * off to `/upsell/:sessionId` (the first upsell OFFER PAGE) — or, when the flow
+ * has no offers, straight to `/success`. Each upsell offer is its own route so
+ * the builder can author bespoke, fully-designed upsell pages.
  *
  * Every backend call degrades gracefully: when no backend is configured the
  * Worker proxy returns a `503 { demo: true }` signal, the adapter returns its
- * `demo` branch, and the page stays in the self-contained demo mode so the
- * template renders a realistic flow out of the box for every processor.
+ * `demo` branch, and the page stays in self-contained demo mode so the template
+ * renders a realistic flow out of the box for every processor.
  */
 export function CheckoutPage() {
-  const [step, setStep] = useState<CheckoutStepId>("cart");
+  // The checkout short code from the route. Mirrors `params.code` in
+  // upw-sendpaylinks' `/c/[code]`; a live build resolves the order payload
+  // from it via `resolveCheckoutLink(code)`.
+  const { code = "demo" } = useParams<{ code: string }>();
+  const navigate = useNavigate();
+
+  const [section, setSection] = useState<CheckoutSection>("cart");
   // Active payment processor (manifest-driven). Drives which adapter the page
   // resolves from the registry and charges through. OmniCart is the default so
   // the retained cart lifecycle is exercised out of the box.
@@ -109,17 +121,10 @@ export function CheckoutPage() {
   // replaced with the backend's options once the cart goes live.
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>(DEMO_SHIPPING_OPTIONS);
   const [shippingOptionId, setShippingOptionId] = useState<string>(DEMO_SHIPPING_OPTIONS[0].id);
-  const [order, setOrder] = useState<OrderSummaryData | null>(null);
   // In-flight backend work + last recoverable error, surfaced inline.
   const [busy, setBusy] = useState(false);
+  const [paying, setPaying] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
-
-  // -- Upsell flow state ------------------------------------------------------
-  // The session is the runtime cursor; `flowNode` is the offer currently shown.
-  // `offerIndex` is a 1-based counter for the "Exclusive offer N" affordance.
-  const [flowSession, setFlowSession] = useState<FlowSession | null>(null);
-  const [flowNode, setFlowNode] = useState<FlowNode | null>(null);
-  const [offerIndex, setOfferIndex] = useState(0);
 
   // -- Lifecycle bootstrap ----------------------------------------------------
   // On mount, try to create a real OmniCart cart and seed it with the demo
@@ -235,18 +240,12 @@ export function CheckoutPage() {
   );
 
   // -- Coupon handlers --------------------------------------------------------
-  // Apply: try the wired OmniCart backend first; if it isn't configured (503
-  // demo signal) or unreachable, fall back to the in-template demo coupon table
-  // so the field is interactive out of the box. Returns an error string on
-  // failure (consumed by OrderSummary), or null on success.
   const handleApplyCoupon = async (raw: string): Promise<string | null> => {
     const code = raw.trim().toUpperCase();
     if (promotions.some((p) => p.code === code)) return "That code is already applied.";
 
     const result = await applyDiscount(cart.id, code);
     if (result.ok && result.cart) {
-      // Backend is the source of truth: adopt its repriced cart + promotions
-      // and trust its `discount_total` from here on.
       setCart(result.cart);
       setPromotions(result.cart.promotions ?? []);
       setBackendPricing(true);
@@ -279,9 +278,6 @@ export function CheckoutPage() {
   };
 
   // -- Shipping step ----------------------------------------------------------
-  // Persist the contact + shipping address on the cart, load the real shipping
-  // options for the cart, and apply the chosen method. In demo mode (no backend)
-  // each call reports `demo: true` and we simply advance with the demo options.
   const handleShippingContinue = async () => {
     setFlowError(null);
     if (liveCart) {
@@ -317,7 +313,6 @@ export function CheckoutPage() {
             amount: o.amount ?? 0,
           }));
           setShippingOptions(mapped);
-          // Keep the current selection if still offered; otherwise pick the first.
           const selected = mapped.some((o) => o.id === shippingOptionId)
             ? shippingOptionId
             : mapped[0].id;
@@ -332,52 +327,14 @@ export function CheckoutPage() {
             return;
           }
         }
-        // If opts.demo: leave the demo shipping options in place and advance.
       } finally {
         setBusy(false);
       }
     }
-    setStep("payment");
+    setSection("payment");
   };
 
-  // Advance to confirmation, reconciling the order total + line items with the
-  // accepted upsells recorded in the flow session journey.
-  const finishToConfirmation = (session: FlowSession | null, baseOrder: OrderSummaryData) => {
-    if (!session) {
-      setOrder(baseOrder);
-    } else {
-      // Append a synthetic line per accepted (revenue > 0) journey step so the
-      // receipt reflects every one-click add-on charged during the flow.
-      const upsellItems = session.journey
-        .filter((j) => j.action === "success" && j.revenue > 0)
-        .map((j, idx) => ({
-          id: `${j.button_id}_${idx}`,
-          title: j.button_text,
-          quantity: 1,
-          unit_price: j.revenue,
-          thumbnail: null,
-          variant: { id: j.button_id, title: "One-click add-on" },
-        }));
-      // One-click upsell add-ons are charged at their displayed price (no
-      // extra tax/shipping in the demo), so fold their revenue into both the
-      // subtotal and the charged total to keep the receipt math coherent.
-      const upsellTotal = upsellItems.reduce((sum, i) => sum + i.unit_price, 0);
-      setOrder({
-        ...baseOrder,
-        subtotal: baseOrder.subtotal + upsellTotal,
-        total: session.total_revenue,
-        items: [...baseOrder.items, ...upsellItems],
-      });
-    }
-    setFlowNode(null);
-    setStep("confirmation");
-  };
-
-  // Build the authoritative charge target from the current cart + totals. On the
-  // platform this is resolved server-side from the published snapshot; in the
-  // template we derive it from the cart so the demo flow runs end to end.
-  // Processor-specific section config (Konnektive/Sticky campaignId, offerId)
-  // is passed through `metadata`.
+  // Build the authoritative charge target from the current cart + totals.
   const buildChargeTarget = (): ChargeTarget => ({
     currency,
     totalCents: grandTotal,
@@ -398,120 +355,94 @@ export function CheckoutPage() {
   });
 
   // Payment captured: charge through the ACTIVE adapter via the universal
-  // contract. Payment-class processors optionally run initPayment first; every
-  // processor then runs chargeInitial, returning a discriminated result. When no
-  // backend is wired the adapter returns `demo` and the page synthesizes a demo
-  // order. Then the processor-independent Flow Builder upsell runs uniformly.
+  // contract, then start the Flow Builder upsell session and HAND OFF to the
+  // first upsell offer route (`/upsell/:sessionId`). When the flow has no offers
+  // we go straight to the receipt (`/success`). Route names mirror
+  // upw-sendpaylinks' CheckoutForm.handlePaymentSuccess handoff exactly:
+  // create-session → upsellUrl `/upsell/{sessionId}`, else `/success`.
   const handlePaid = async () => {
     setFlowError(null);
-    const active = adapter ?? (await getCheckoutAdapter(processor));
+    setPaying(true);
+    try {
+      const active = adapter ?? (await getCheckoutAdapter(processor));
 
-    const demoOrder: OrderSummaryData = {
-      id: `order_${Math.random().toString(36).slice(2, 10)}`,
-      email: address.email || "customer@example.com",
-      subtotal: subtotalAmount,
-      shipping_total: shippingAmount,
-      tax_total: taxAmount,
-      discount_total: discountAmount,
-      total: grandTotal,
-      currency_code: currency,
-      items: cart.items,
-      promotions,
-    };
+      const demoOrder: OrderSummaryData = {
+        id: `order_${Math.random().toString(36).slice(2, 10)}`,
+        email: address.email || "customer@example.com",
+        subtotal: subtotalAmount,
+        shipping_total: shippingAmount,
+        tax_total: taxAmount,
+        discount_total: discountAmount,
+        total: grandTotal,
+        currency_code: currency,
+        items: cart.items,
+        promotions,
+      };
 
-    const chargeTarget = buildChargeTarget();
-    const customer = {
-      email: address.email || demoOrder.email,
-      first_name: address.first_name || undefined,
-      last_name: address.last_name || undefined,
-      phone: address.phone || undefined,
-    };
+      const chargeTarget = buildChargeTarget();
+      const customer = {
+        email: address.email || demoOrder.email,
+        first_name: address.first_name || undefined,
+        last_name: address.last_name || undefined,
+        phone: address.phone || undefined,
+      };
 
-    // FIRST call (payment-class only): initPayment.
-    if (PROCESSOR_CLASSES[processor] === "payment" && active.initPayment) {
-      const init = await active.initPayment({ cart, customer, chargeTarget });
-      if ("status" in init && init.status === "failed") {
-        setFlowError(init.userMessage);
+      // FIRST call (payment-class only): initPayment.
+      if (PROCESSOR_CLASSES[processor] === "payment" && active.initPayment) {
+        const init = await active.initPayment({ cart, customer, chargeTarget });
+        if ("status" in init && init.status === "failed") {
+          setFlowError(init.userMessage);
+          return;
+        }
+      }
+
+      // chargeInitial (all processors).
+      const result = await active.chargeInitial({
+        cart,
+        customer,
+        chargeTarget,
+        idempotencyKey: demoOrder.id,
+      });
+      if (result.status === "failed") {
+        setFlowError(result.userMessage);
         return;
       }
-      // collect_payment_method / confirm_client_secret / demo: proceed to charge.
+      if (result.status === "requires_action") {
+        setFlowError(
+          "Your bank needs to verify this payment (3-D Secure). Please complete the verification and try again.",
+        );
+        return;
+      }
+      const baseOrder: OrderSummaryData =
+        result.status === "succeeded" ? result.order : demoOrder;
+
+      // Start the post-purchase Flow Builder upsell session.
+      const { session, entry_node } = await startUpsellFlow({
+        orderId: baseOrder.id,
+        originalOrderTotal: baseOrder.total,
+        currencyCode: baseOrder.currency_code,
+      });
+
+      // Persist the handoff so the separate upsell/receipt routes can rehydrate
+      // the paid order + flow cursor (mirror of server-side session retrieval).
+      saveHandoff({ code, order: baseOrder, session });
+
+      if (entry_node && session.current_button_id) {
+        // Hand off to the FIRST upsell offer page. Each offer is its own route.
+        // Mirror: upw-sendpaylinks redirects to upsellUrl `/upsell/{sessionId}`.
+        navigate(
+          `/upsell/${encodeURIComponent(session.id)}?nodeId=${encodeURIComponent(entry_node.id)}`,
+        );
+      } else {
+        // No upsell offers — go straight to the receipt.
+        // Mirror: upw-sendpaylinks redirects to `successUrl?orderId=&transactionId=`.
+        navigate(
+          `/success?session=${encodeURIComponent(session.id)}&orderId=${encodeURIComponent(baseOrder.id)}`,
+        );
+      }
+    } finally {
+      setPaying(false);
     }
-
-    // chargeInitial (all processors).
-    const result = await active.chargeInitial({
-      cart,
-      customer,
-      chargeTarget,
-      idempotencyKey: demoOrder.id,
-    });
-    if (result.status === "failed") {
-      setFlowError(result.userMessage);
-      return;
-    }
-    if (result.status === "requires_action") {
-      setFlowError(
-        "Your bank needs to verify this payment (3-D Secure). Please complete the verification and try again.",
-      );
-      return;
-    }
-    const baseOrder: OrderSummaryData =
-      result.status === "succeeded" ? result.order : demoOrder;
-
-    setOrder(baseOrder);
-
-    const { session, entry_node } = await startUpsellFlow({
-      orderId: baseOrder.id,
-      originalOrderTotal: baseOrder.total,
-      currencyCode: baseOrder.currency_code,
-    });
-    setFlowSession(session);
-
-    if (entry_node && session.current_button_id) {
-      setFlowNode(entry_node);
-      setOfferIndex(1);
-      setStep("upsell");
-    } else {
-      finishToConfirmation(session, baseOrder);
-    }
-  };
-
-  // Accept the current offer: charge the saved payment method (1-click) and
-  // walk the success branch. Decline walks the decline branch. Either way we
-  // render the next node or advance to confirmation on a terminal node.
-  const handleFlowStep = async (action: "accept" | "decline", variantId: string | null) => {
-    if (!flowSession || !order) return;
-    const result = await stepUpsellFlow({ session: flowSession, action, variantId });
-    setFlowSession(result.session);
-
-    // A card decline on accept: keep the customer on the same offer so they can
-    // retry or decline. (A production page may surface result.payment_error.)
-    if (action === "accept" && result.payment_error) {
-      return;
-    }
-
-    if (result.is_terminal || !result.next_node) {
-      finishToConfirmation(result.session, order);
-      return;
-    }
-    setFlowNode(result.next_node);
-    setOfferIndex((n) => n + 1);
-  };
-
-  const startOver = () => {
-    setCart(DEMO_CART);
-    setLiveCart(false);
-    setPromotions([]);
-    setDemoDiscounts({});
-    setBackendPricing(false);
-    setAddress(EMPTY_ADDRESS);
-    setShippingOptions(DEMO_SHIPPING_OPTIONS);
-    setShippingOptionId(DEMO_SHIPPING_OPTIONS[0].id);
-    setFlowError(null);
-    setOrder(null);
-    setFlowSession(null);
-    setFlowNode(null);
-    setOfferIndex(0);
-    setStep("cart");
   };
 
   // Cart with current shipping/tax/discount reflected for the summary card.
@@ -542,7 +473,7 @@ export function CheckoutPage() {
 
       <main className="mx-auto max-w-5xl px-4 py-8">
         <div className="mb-8">
-          <CheckoutSteps current={step} />
+          <CheckoutSteps current={section} />
         </div>
 
         {flowError && (
@@ -553,7 +484,7 @@ export function CheckoutPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
           <section>
-            {step === "cart" && (
+            {section === "cart" && (
               <div className="space-y-6">
                 <div className="rounded-lg border bg-muted/30 p-4">
                   <ProcessorPicker
@@ -566,11 +497,11 @@ export function CheckoutPage() {
                   cart={cart}
                   onUpdateQuantity={updateQuantity}
                   onRemove={removeItem}
-                  onContinue={() => setStep("shipping")}
+                  onContinue={() => setSection("shipping")}
                 />
               </div>
             )}
-            {step === "shipping" && (
+            {section === "shipping" && (
               <ShippingStep
                 address={address}
                 options={shippingOptions}
@@ -579,41 +510,29 @@ export function CheckoutPage() {
                 busy={busy}
                 onChangeAddress={setAddress}
                 onSelectOption={setShippingOptionId}
-                onBack={() => setStep("cart")}
+                onBack={() => setSection("cart")}
                 onContinue={handleShippingContinue}
               />
             )}
-            {step === "payment" && (
+            {section === "payment" && (
               <PaymentStep
                 amount={grandTotal}
                 currency={currency}
-                onBack={() => setStep("shipping")}
+                busy={paying}
+                onBack={() => setSection("shipping")}
                 onPaid={handlePaid}
               />
             )}
-            {step === "upsell" && flowNode && (
-              <UpsellStep
-                node={flowNode}
-                offerIndex={offerIndex}
-                onAccept={(variantId) => handleFlowStep("accept", variantId)}
-                onDecline={() => handleFlowStep("decline", null)}
-              />
-            )}
-            {step === "confirmation" && order && (
-              <ConfirmationStep order={order} onStartOver={startOver} />
-            )}
           </section>
 
-          {step !== "confirmation" && step !== "upsell" && (
-            <aside>
-              <OrderSummary
-                cart={summaryCart}
-                shippingAmount={shippingAmount}
-                onApplyCoupon={handleApplyCoupon}
-                onRemoveCoupon={handleRemoveCoupon}
-              />
-            </aside>
-          )}
+          <aside>
+            <OrderSummary
+              cart={summaryCart}
+              shippingAmount={shippingAmount}
+              onApplyCoupon={handleApplyCoupon}
+              onRemoveCoupon={handleRemoveCoupon}
+            />
+          </aside>
         </div>
       </main>
     </div>

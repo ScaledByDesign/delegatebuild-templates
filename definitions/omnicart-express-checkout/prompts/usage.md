@@ -1,6 +1,6 @@
 # Usage Instructions
 
-This template generates an **OmniCart Express Checkout** storefront. The checkout experience lives at `src/pages/CheckoutPage.tsx` and is composed of step components in `src/components/checkout/`. The page auto-updates as you edit.
+This template generates an **OmniCart Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout exactly — `/c/:code` (the public checkout one-pager), `/upsell/:sessionId` (one post-purchase upsell offer per route), and `/success` (the receipt). There is NO homepage / storefront / cart-summary landing: `/` redirects straight into the checkout. The checkout page lives at `src/pages/CheckoutPage.tsx`, each upsell offer at `src/pages/UpsellOfferPage.tsx`, and the receipt at `src/pages/SuccessPage.tsx`, composed of step components in `src/components/checkout/`. The page auto-updates as you edit.
 
 > Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of the **Medusa** commerce framework (`@medusajs/medusa-js`). Keep all generated UI, copy, and component names branded as **OmniCart** — never expose "Medusa" to end users.
 
@@ -50,7 +50,7 @@ if (!created.demo && created.ok) {
 * **On mount** it calls `createCart(region_id)` and seeds the cart with the demo line items via `addLineItem`. If the backend isn't wired (`demo: true`) it stays on the in-template `DEMO_CART`. A `liveCart` flag tracks which mode is active.
 * **Cart edits** (`updateQuantity`/`removeItem`) call `updateLineItem`/`removeLineItem` when live (the repriced cart is authoritative) and edit local state in demo mode.
 * **Shipping continue** calls `updateCartContact` (email + address), `listShippingOptions` (real options replace the demo set in `shippingOptions` state), then `addShippingMethod` for the selection.
-* **Payment capture** (`handlePaid`) lists providers, creates the payment collection, initializes the session, then `completeCart`. On `{ type: "order" }` it adopts the real order; otherwise it surfaces the cart-level error. In demo mode it synthesizes a demo order so the upsell + confirmation still run.
+* **Payment capture** (`handlePaid`) lists providers (`listPaymentProviders`), creates the payment collection (`createPaymentCollection`), initializes the session (`initPaymentSession`), then `completeCart`. On `{ type: "order" }` it adopts the real order; otherwise it surfaces the cart-level error. In demo mode it synthesizes a demo order. On a successful charge it starts the upsell session (`startUpsellFlow`), persists the handoff (`saveHandoff` in `src/lib/checkout-session-store.ts`), and **navigates** to `/upsell/:sessionId?nodeId=<entry>` (first offer page) — or to `/success?session=&orderId=` when the flow has no offers. This mirrors upw-sendpaylinks' `CheckoutForm.handlePaymentSuccess`: `create-session` → `upsellUrl` `/upsell/{sessionId}`, else the `successUrl`.
 
 Each v2 endpoint shape comes from the official [Express Checkout guide](https://docs.medusajs.com/resources/storefront-development/guides/express-checkout). Address fields use `country_code` lowercased (e.g. `us`). The demo fallback is intentional — keep it so the generated checkout works out of the box.
 
@@ -88,29 +88,39 @@ import { Elements } from "@stripe/react-stripe-js";
 
 Never hardcode or expose secret keys client-side. The publishable key is the only Stripe key that reaches the browser.
 
-## Checkout flow (recommended structure)
+## Route map (CRITICAL — mirrors upw-sendpaylinks)
 
-The single-page checkout advances through these steps. Keep them as components under `src/components/checkout/`:
+The flow is split across separate routes (NOT step state in one component). Route names mirror the upw-sendpaylinks headless checkout exactly:
+
+* **`/`** redirects to `/c/demo`. There is **no** homepage / storefront / cart-summary landing.
+* **`/c/:code`** (`CheckoutPage.tsx`) — the public checkout one-pager. `:code` is the short checkout code that resolves the order payload (mirror of upw-sendpaylinks' `resolveCheckoutLink(code)`). Cart review, shipping, and payment are **on-page sections** (`section` state = `"cart" | "shipping" | "payment"`), not routes.
+* **`/upsell/:sessionId`** (`UpsellOfferPage.tsx`) — **one** post-purchase upsell OFFER per route. The `?nodeId=<buttonId>` query param (carried in router state) selects which Flow Builder node to render — this is the template's equivalent of upw-sendpaylinks' per-offer `externalPageUrl` convention (`?sessionId=&nodeId=&flowId=`). Each offer being its own route lets the builder author a bespoke, fully-designed page per offer.
+* **`/success`** (`SuccessPage.tsx`) — the receipt (the `successUrl` / `completionRedirectUrl` target). Reads `?session=` and renders the paid base order + the accepted-upsell journey + grand total.
+
+The on-page checkout sections (components under `src/components/checkout/`):
 
 1. **Cart** (`CartStep.tsx`) — line items, quantities, subtotal/total via `formatAmount`.
 2. **Shipping** (`ShippingStep.tsx`) — address form + shipping option selection.
-3. **Payment** (`PaymentStep.tsx`) — Stripe Elements card form; creates the payment session and completes the cart.
-4. **Upsell** (`UpsellStep.tsx`) — **Flow Builder driven post-purchase upsell sequence** shown after payment is captured. Renders the *current* flow node (offer); accepting charges the *same* saved payment method (no re-entering card details) and walks the success branch, declining walks the decline branch. The page loops through multiple offers until a terminal node, then proceeds to confirmation.
-5. **Confirmation** (`ConfirmationStep.tsx`) — an **itemized receipt** after a successful purchase: every line item (including **every** accepted upsell from the flow journey) plus a totals breakdown — subtotal, discounts (with applied code labels from the promotions list), shipping, tax, and **total paid**. The `OrderSummary` confirmation object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `promotions[]` (each with `code`; the discount amount comes from `discount_total`).
+3. **Payment** (`PaymentStep.tsx`) — Stripe Elements card form; creates the payment session and completes the cart. On a successful charge the page hands off to the `/upsell/:sessionId` route.
 
-A step indicator (`CheckoutSteps.tsx`) shows progress for the core cart → shipping → payment → done steps. The upsell is intentionally not a visible progress step — the offer sequence appears as bonus offers between payment capture and confirmation. `CheckoutPage.tsx` owns the cart/order state, the upsell flow session, and the current step.
+The upsell offer page and receipt are SEPARATE routes:
+
+* **Upsell offer** (`pages/UpsellOfferPage.tsx`) — the **Flow Builder driven post-purchase upsell**, one offer per route. Accepting charges the *same* saved payment method (no re-entering card details) and **navigates** to the next offer route (`/upsell/:sessionId?nodeId=<next>`); declining walks the decline branch the same way. A terminal node navigates to `/success`. Mirrors upw-sendpaylinks' `/api/upsell/accept|decline` handleNextStep branching (`hasMoreOffers` | `showDownsell` | `completionRedirectUrl`).
+* **Receipt** (`pages/SuccessPage.tsx`) — an **itemized receipt**: the paid base order plus **every** accepted upsell from `session.journey` (steps with `action === "success"` and `revenue > 0`), and the cumulative grand total (`session.total_revenue`). The `OrderSummary` object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `promotions[]` (each with `code`; the discount amount comes from `discount_total`).
+
+A step indicator (`CheckoutSteps.tsx`) shows progress for the on-page cart → shipping → payment sections. The upsell is intentionally not a visible progress step (it's a separate route after payment). `CheckoutPage.tsx` owns the cart/order state; the **checkout->upsell->receipt handoff** is persisted via `src/lib/checkout-session-store.ts` (`saveHandoff`/`loadHandoff`/`updateHandoffSession`/`clearHandoff`) — the template's in-browser stand-in for the platform's server-side session retrieval. When a real upsell runtime is wired, replace those reads with fetches to `/api/upsell/*`; the route components don't care where the data comes from.
 
 ### Flow Builder driven upsell sequence (`src/lib/upsell-flow.ts` + `src/lib/flow-types.ts`)
 
 The post-purchase upsells are **not** a single hardcoded offer — they are driven by the OmniCart **Flow Builder**, a merchant-designed directed graph of offer nodes (mirror of the Delegate `UpsellButton` model). Each node carries its accept CTA, price (or multi-accept options like 1/2/3 packs), an optional server-enforced timer, and `success_next_button_id` / `decline_next_button_id` branches plus terminal flags.
 
-After payment, `CheckoutPage.handlePaid` calls `startUpsellFlow({ orderId, originalOrderTotal })` to initialize a session and resolve the entry node. Each Accept/Decline calls `stepUpsellFlow({ session, action, variantId })`, which hits `/api/upsell/click` — the runtime charges the saved payment method on accept (anti-tamper: it re-resolves price server-side), records the journey step, and returns the next node. The page renders that node and repeats until `is_terminal` (or no next node), then advances to confirmation.
+After payment, `CheckoutPage.handlePaid` calls `startUpsellFlow({ orderId, originalOrderTotal })` to initialize a session and resolve the entry node, persists the handoff via `saveHandoff`, and **navigates** to `/upsell/:sessionId?nodeId=<entry>`. On the upsell route, each Accept/Decline calls `stepUpsellFlow({ session, action, variantId })`, which hits `/api/upsell/click` — the runtime charges the saved payment method on accept (anti-tamper: it re-resolves price server-side), records the journey step, and returns the next node. `UpsellOfferPage` then **navigates to the next route** — `/upsell/:sessionId?nodeId=<next>` for another offer, or `/success?session=&orderId=` when the node is terminal (or there is no next node).
 
-* **Multi-accept nodes**: when a node has `accept_options`, `UpsellStep` shows a selector and sends the chosen option `id` as `variantId`.
+* **Multi-accept nodes**: when a node has `accept_options`, `UpsellOfferPage` shows a selector and sends the chosen option `id` as `variantId`.
 * **Branching**: design upsell → downsell flows by pointing a node's `decline_next_button_id` at a cheaper downsell node.
 * **Demo fallback**: when no backend is configured (`/api/omnicart-config` reports `backendConfigured: false`), the client walks the in-browser `DEMO_FLOW_NODES` (a 2-offer upsell→downsell + multi-accept example) so the generated page renders a full multi-upsell journey out of the box. Replace by wiring the runtime env vars below and fetching the merchant's real flow.
 
-Keep the offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components — `UpsellStep` is a pure node renderer.
+Keep the offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components — `UpsellOfferPage` is a pure node renderer per route.
 
 ## Styling
 
@@ -123,14 +133,19 @@ Keep the offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded i
 
 Uses `createBrowserRouter` — do NOT switch to `BrowserRouter`/`HashRouter`/`MemoryRouter`. If you switch routers, `RouteErrorBoundary`/`useRouteError()` will break.
 
-**Add routes in `src/main.tsx`:**
+**The route map is fixed (mirrors upw-sendpaylinks). Do NOT add a homepage route** — `/` redirects into the checkout:
 ```tsx
+import { Navigate } from "react-router-dom";
+
 const router = createBrowserRouter([
-  { path: "/", element: <CheckoutPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/", element: <Navigate to="/c/demo" replace />, errorElement: <RouteErrorBoundary /> },
+  { path: "/c/:code", element: <CheckoutPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/upsell/:sessionId", element: <UpsellOfferPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/success", element: <SuccessPage />, errorElement: <RouteErrorBoundary /> },
 ]);
 ```
 
-**Navigation:** `import { Link } from 'react-router-dom'` then `<Link to="/">...</Link>`.
+**Navigation between routes:** use `import { useNavigate } from 'react-router-dom'` then `const navigate = useNavigate(); navigate('/upsell/' + sessionId + '?nodeId=' + nextId, { state: { node, offerIndex } })`. The checkout->upsell->success handoff travels via `saveHandoff`/`loadHandoff` (`src/lib/checkout-session-store.ts`) plus the `?session=`/`?nodeId=` query params. Do NOT add a storefront/homepage route — the public entry point is `/c/:code`.
 
 **Don't:**
 * Use `BrowserRouter`, `HashRouter`, `MemoryRouter`
@@ -159,7 +174,7 @@ Configured in `wrangler.jsonc` / dashboard (do NOT edit `wrangler.jsonc` from th
 
 # Important Notes
 
-* The cart → shipping → payment → **upsell sequence** → confirmation flow is the core of this template. Build your storefront around it rather than replacing it.
-* The upsell offers are driven by the Flow Builder graph (`src/lib/flow-types.ts` / the live runtime), not hardcoded in `UpsellStep`. Add or reorder offers by editing the flow, not the component.
+* The route flow `/c/:code` (cart → shipping → payment on-page sections) → `/upsell/:sessionId` (one offer per route) → `/success` (receipt) is the core of this template. Build your storefront around these routes rather than replacing them or collapsing them back into a single page.
+* The upsell offers are driven by the Flow Builder graph (`src/lib/flow-types.ts` / the live runtime), not hardcoded in `UpsellOfferPage`. Add or reorder offers by editing the flow, not the component.
 * Keep secrets server-side: only the Stripe **publishable** key and OmniCart public config ever reach the browser.
 * **Do not edit/add/remove worker bindings or touch `wrangler.jsonc`/`wrangler.toml`.** Build around what is provided.

@@ -1,6 +1,6 @@
 # Usage Instructions
 
-This template generates a **Universal Express Checkout** storefront. The checkout experience lives at `src/pages/CheckoutPage.tsx` and is composed of step components in `src/components/checkout/`. What makes it universal: the initial charge is driven by a **processor-agnostic adapter contract** (`src/lib/checkout/`), so the same UI can complete a purchase through Stripe, OmniCart, Konnektive, or Sticky.io. The page auto-updates as you edit.
+This template generates a **Universal Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout exactly — `/c/:code` (the public checkout one-pager), `/upsell/:sessionId` (one post-purchase upsell offer per route), and `/success` (the receipt). There is NO homepage / storefront / cart-summary landing: `/` redirects straight into the checkout. The checkout page lives at `src/pages/CheckoutPage.tsx`, each upsell offer at `src/pages/UpsellOfferPage.tsx`, and the receipt at `src/pages/SuccessPage.tsx`, composed of step components in `src/components/checkout/`. What makes it universal: the initial charge is driven by a **processor-agnostic adapter contract** (`src/lib/checkout/`), so the same UI can complete a purchase through Stripe, OmniCart, Konnektive, or Sticky.io. The page auto-updates as you edit.
 
 > Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of the **Medusa** commerce framework (`@medusajs/medusa-js`). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
 
@@ -45,7 +45,7 @@ switch (result.status) {
 const canSubscribe = hasPublishCapability(adapter.capabilities, "subscription");
 ```
 
-`CheckoutPage.tsx` orchestrates this: it owns `processor` state (defaults to `"omnicart"`), resolves the active `adapter` via `getCheckoutAdapter`, builds a `ChargeTarget` from the cart in `buildChargeTarget()`, and in `handlePaid` runs `initPayment` (payment-class) then `chargeInitial`, pattern-matching the result union (adopt order / surface 3DS notice / show error / fall to demo). The `ProcessorPicker` at the cart step lets the user switch processors.
+`CheckoutPage.tsx` orchestrates this: it owns `processor` state (defaults to `"omnicart"`), resolves the active `adapter` via `getCheckoutAdapter`, builds a `ChargeTarget` from the cart in `buildChargeTarget()`, and in `handlePaid` runs `initPayment` (payment-class) then `chargeInitial`, pattern-matching the result union (adopt order / surface 3DS notice / show error / fall to demo). On a successful charge it starts the upsell session (`startUpsellFlow`), persists the handoff (`saveHandoff` in `src/lib/checkout-session-store.ts`), and **navigates** to `/upsell/:sessionId?nodeId=<entry>` (first offer page) — or to `/success?session=&orderId=` when the flow has no offers. This mirrors upw-sendpaylinks' `CheckoutForm.handlePaymentSuccess`: `create-session` → `upsellUrl` `/upsell/{sessionId}`, else the `successUrl`. The `ProcessorPicker` at the cart step lets the user switch processors.
 
 ## Commerce client (`src/lib/omnicart.ts`)
 
@@ -117,29 +117,39 @@ import { Elements } from "@stripe/react-stripe-js";
 
 Never hardcode or expose secret keys client-side. Only the **publishable** key reaches the browser. CRM-class processors (Konnektive, Sticky.io) collect card details through their own server-side charge and do not mount Stripe Elements.
 
-## Checkout flow (recommended structure)
+## Route map (CRITICAL — mirrors upw-sendpaylinks)
 
-The single-page checkout advances through these steps (components under `src/components/checkout/`):
+The flow is split across separate routes (NOT step state in one component). Route names mirror the upw-sendpaylinks headless checkout exactly:
+
+* **`/`** redirects to `/c/demo`. There is **no** homepage / storefront / cart-summary landing.
+* **`/c/:code`** (`CheckoutPage.tsx`) - the public checkout one-pager. `:code` is the short checkout code that resolves the order payload (mirror of upw-sendpaylinks' `resolveCheckoutLink(code)`). Cart review, shipping, and payment are **on-page sections** (`section` state = `"cart" | "shipping" | "payment"`), not routes.
+* **`/upsell/:sessionId`** (`UpsellOfferPage.tsx`) - **one** post-purchase upsell OFFER per route. The `?nodeId=<buttonId>` query param (carried in router state) selects which Flow Builder node to render - this is the template's equivalent of upw-sendpaylinks' per-offer `externalPageUrl` convention (`?sessionId=&nodeId=&flowId=`). Each offer being its own route lets the builder author a bespoke, fully-designed page per offer.
+* **`/success`** (`SuccessPage.tsx`) - the receipt (the `successUrl` / `completionRedirectUrl` target). Reads `?session=` and renders the paid base order + the accepted-upsell journey + grand total.
+
+The on-page checkout sections (components under `src/components/checkout/`):
 
 1. **Cart** (`CartStep.tsx`) - line items, quantities, subtotal/total via `formatAmount`. Renders the **`ProcessorPicker`** so the shopper/merchant chooses the active processor.
 2. **Shipping** (`ShippingStep.tsx`) - address form + shipping option selection.
-3. **Payment** (`PaymentStep.tsx`) - collection UI for the active payment-class adapter (Stripe Elements card form); CRM-class adapters charge server-side.
-4. **Upsell** (`UpsellStep.tsx`) - **Flow Builder driven post-purchase upsell sequence** shown after the initial charge. Accepting charges the same saved payment method (no re-entry) and walks the success branch; declining walks the decline branch. Loops through offers until a terminal node, then proceeds to confirmation.
-5. **Confirmation** (`ConfirmationStep.tsx`) - an **itemized receipt**: every line item (including **every** accepted upsell) plus subtotal, discounts (with applied code labels), shipping, tax, and **total paid**. The `OrderSummary` object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `promotions[]`.
+3. **Payment** (`PaymentStep.tsx`) - collection UI for the active payment-class adapter (Stripe Elements card form); CRM-class adapters charge server-side. On a successful charge the page hands off to the `/upsell/:sessionId` route.
 
-A step indicator (`CheckoutSteps.tsx`) shows progress for cart -> shipping -> payment -> done. The upsell is intentionally not a visible progress step. `CheckoutPage.tsx` owns the cart/order state, the active processor + adapter, the upsell flow session, and the current step.
+The upsell offer page and receipt are SEPARATE routes:
+
+* **Upsell offer** (`pages/UpsellOfferPage.tsx`) - the **Flow Builder driven post-purchase upsell**, one offer per route. Accepting charges the same saved payment method (no re-entry) and **navigates** to the next offer route (`/upsell/:sessionId?nodeId=<next>`); declining walks the decline branch the same way. A terminal node navigates to `/success`. Mirrors upw-sendpaylinks' `/api/upsell/accept|decline` handleNextStep branching (`hasMoreOffers` | `showDownsell` | `completionRedirectUrl`).
+* **Receipt** (`pages/SuccessPage.tsx`) - an **itemized receipt**: the paid base order plus **every** accepted upsell from `session.journey` (steps with `action === "success"` and `revenue > 0`), and the cumulative grand total (`session.total_revenue`). The `OrderSummary` object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `promotions[]`.
+
+A step indicator (`CheckoutSteps.tsx`) shows progress for the on-page cart -> shipping -> payment sections. The upsell is intentionally not a visible progress step (it's a separate route after payment). `CheckoutPage.tsx` owns the cart/order state and the active processor + adapter; the **checkout->upsell->receipt handoff** is persisted via `src/lib/checkout-session-store.ts` (`saveHandoff`/`loadHandoff`/`updateHandoffSession`/`clearHandoff`) - the template's in-browser stand-in for the platform's server-side session retrieval. When a real upsell runtime is wired, replace those reads with fetches to `/api/upsell/*`; the route components don't care where the data comes from.
 
 ### Flow Builder driven upsell sequence (`src/lib/upsell-flow.ts` + `src/lib/flow-types.ts`)
 
 The post-purchase upsells are driven by the OmniCart **Flow Builder**, a merchant-designed directed graph of offer nodes (mirror of the Delegate `UpsellButton` model). Each node carries its accept CTA, price (or multi-accept 1/2/3 packs), an optional server-enforced timer, and `success_next_button_id` / `decline_next_button_id` branches plus terminal flags. The upsell runs **regardless of which initial processor charged the order** - the charge adapter and the upsell engine are decoupled.
 
-After the initial charge, `CheckoutPage.handlePaid` calls `startUpsellFlow({ orderId, originalOrderTotal })` to resolve the entry node. Each Accept/Decline calls `stepUpsellFlow({ session, action, variantId })` -> `/api/upsell/click`; the runtime charges the saved payment method on accept (anti-tamper: re-resolves price server-side) and returns the next node until `is_terminal`.
+After the initial charge, `CheckoutPage.handlePaid` calls `startUpsellFlow({ orderId, originalOrderTotal })` to resolve the entry node, persists the handoff via `saveHandoff`, and **navigates** to `/upsell/:sessionId?nodeId=<entry>`. On the upsell route, each Accept/Decline calls `stepUpsellFlow({ session, action, variantId })` -> `/api/upsell/click`; the runtime charges the saved payment method on accept (anti-tamper: re-resolves price server-side) and returns the next node. `UpsellOfferPage` then **navigates to the next route** - `/upsell/:sessionId?nodeId=<next>` for another offer, or `/success?session=&orderId=` when the node is terminal.
 
-* **Multi-accept nodes**: when a node has `accept_options`, `UpsellStep` shows a selector and sends the chosen option `id` as `variantId`.
+* **Multi-accept nodes**: when a node has `accept_options`, `UpsellOfferPage` shows a selector and sends the chosen option `id` as `variantId`.
 * **Branching**: design upsell -> downsell flows by pointing a node's `decline_next_button_id` at a cheaper node.
 * **Demo fallback**: when no backend is configured, the client walks the in-browser `DEMO_FLOW_NODES` (a 2-offer upsell->downsell + multi-accept example).
 
-Keep offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components - `UpsellStep` is a pure node renderer.
+Keep offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components - `UpsellOfferPage` is a pure node renderer per route.
 
 ## Styling
 
@@ -151,14 +161,19 @@ Keep offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in co
 
 Uses `createBrowserRouter` - do NOT switch to `BrowserRouter`/`HashRouter`/`MemoryRouter`. If you switch routers, `RouteErrorBoundary`/`useRouteError()` will break.
 
-**Add routes in `src/main.tsx`:**
+**The route map is fixed (mirrors upw-sendpaylinks). Do NOT add a homepage route** - `/` redirects into the checkout:
 ```tsx
+import { Navigate } from "react-router-dom";
+
 const router = createBrowserRouter([
-  { path: "/", element: <CheckoutPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/", element: <Navigate to="/c/demo" replace />, errorElement: <RouteErrorBoundary /> },
+  { path: "/c/:code", element: <CheckoutPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/upsell/:sessionId", element: <UpsellOfferPage />, errorElement: <RouteErrorBoundary /> },
+  { path: "/success", element: <SuccessPage />, errorElement: <RouteErrorBoundary /> },
 ]);
 ```
 
-**Navigation:** `import { Link } from 'react-router-dom'` then `<Link to="/">...</Link>`.
+**Navigation between routes:** use `import { useNavigate } from 'react-router-dom'` then `const navigate = useNavigate(); navigate('/upsell/' + sessionId + '?nodeId=' + nextId, { state: { node, offerIndex } })`. The checkout->upsell->success handoff travels via `saveHandoff`/`loadHandoff` (`src/lib/checkout-session-store.ts`) plus the `?session=`/`?nodeId=` query params. Do NOT add a storefront/homepage route - the public entry point is `/c/:code`.
 
 **Don't:**
 * Use `BrowserRouter`, `HashRouter`, `MemoryRouter`
@@ -192,8 +207,8 @@ Each processor's charge backend is independent: leave a processor's env var unse
 
 # Important Notes
 
-* The cart -> shipping -> payment -> **upsell sequence** -> confirmation flow is the core of this template. Build your storefront around it rather than replacing it.
+* The route flow `/c/:code` (cart -> shipping -> payment on-page sections) -> `/upsell/:sessionId` (one offer per route) -> `/success` (receipt) is the core of this template. Build your storefront around these routes rather than replacing them or collapsing them back into a single page.
 * The initial charge is **processor-agnostic** - add or swap a gateway by implementing a `CheckoutProcessorAdapter` (manifest entry + registry thunk), not by editing `CheckoutPage`.
-* The upsell offers are driven by the Flow Builder graph, not hardcoded in `UpsellStep`, and run regardless of the initial processor.
+* The upsell offers are driven by the Flow Builder graph, not hardcoded in `UpsellOfferPage`, and run regardless of the initial processor.
 * Keep secrets server-side: only the Stripe **publishable** key and OmniCart public config ever reach the browser.
 * **Do not edit/add/remove worker bindings or touch `wrangler.jsonc`/`wrangler.toml`.** Build around what is provided.
