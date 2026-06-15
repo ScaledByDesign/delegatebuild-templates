@@ -33,7 +33,7 @@ export default function Home() {
     <>
       <Head>
         <title>Orange dummy homepage</title>
-        <meta name="description" content="AI-powered application builder powered by Cloudflare." />
+        <meta name="description" content="AI-powered application builder by DelegateBuild." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -95,7 +95,7 @@ export default function Home() {
         </motion.div>
 
         <footer className="absolute bottom-8 text-center text-muted-foreground/80">
-          <p>Powered by Cloudflare</p>
+          <p>Powered by DelegateBuild</p>
         </footer>
       </main>
     </>

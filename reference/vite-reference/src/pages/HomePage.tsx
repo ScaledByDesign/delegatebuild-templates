@@ -129,7 +129,7 @@ export function HomePage() {
       </div>
 
       <footer className="absolute bottom-8 text-center text-muted-foreground/80">
-        <p>Powered by Cloudflare</p>
+        <p>Powered by DelegateBuild</p>
       </footer>
 
       <Toaster richColors closeButton />
