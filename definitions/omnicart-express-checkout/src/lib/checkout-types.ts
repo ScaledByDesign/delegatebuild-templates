@@ -4,7 +4,7 @@
  * OmniCart is the whitelabel commerce brand (powered internally by the Medusa
  * framework). These types model the slice of checkout state the UI owns.
  */
-import type { OmniCart, OmniCartLineItem } from "@/lib/omnicart";
+import type { OmniCart, OmniCartDiscount, OmniCartLineItem } from "@/lib/omnicart";
 
 export type CheckoutStepId =
   | "cart"
@@ -50,9 +50,16 @@ export interface ShippingOption {
 export interface OrderSummary {
   id: string;
   email: string;
+  /** Itemized totals (minor units). `total` is what was charged. */
+  subtotal: number;
+  shipping_total: number;
+  tax_total: number;
+  discount_total: number;
   total: number;
   currency_code: string;
   items: OmniCartLineItem[];
+  /** Coupon codes applied to the order (empty when none). */
+  discounts: OmniCartDiscount[];
 }
 
 export const EMPTY_ADDRESS: ShippingAddress = {
@@ -96,9 +103,37 @@ export const DEMO_CART: OmniCart = {
   subtotal: 6800,
   shipping_total: 0,
   tax_total: 544,
+  discount_total: 0,
+  discounts: [],
   total: 7344,
 };
 
 export function cartSubtotal(items: OmniCartLineItem[]): number {
   return items.reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+}
+
+/**
+ * Demo coupon table used when no OmniCart backend is configured, so the coupon
+ * field is interactive out of the box. Replace by wiring `applyDiscount` to a
+ * live OmniCart backend (the backend then becomes the source of truth).
+ *   - percent:  fraction off the subtotal (0.10 = 10%)
+ *   - amount:   fixed minor-unit amount off (e.g. 1000 = $10.00)
+ */
+export const DEMO_COUPONS: Record<string, { percent?: number; amount?: number }> = {
+  SAVE10: { percent: 0.1 },
+  WELCOME15: { percent: 0.15 },
+  FLAT5: { amount: 500 },
+};
+
+/**
+ * Resolve a demo coupon to a discount amount against a given subtotal.
+ * Returns `null` for unknown codes. Percent discounts are capped at subtotal.
+ */
+export function resolveDemoCoupon(code: string, subtotal: number): number | null {
+  const def = DEMO_COUPONS[code.trim().toUpperCase()];
+  if (!def) return null;
+  if (typeof def.percent === "number") {
+    return Math.min(subtotal, Math.round(subtotal * def.percent));
+  }
+  return Math.min(subtotal, def.amount ?? 0);
 }

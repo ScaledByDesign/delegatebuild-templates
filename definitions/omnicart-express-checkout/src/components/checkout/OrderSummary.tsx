@@ -1,3 +1,7 @@
+import { useState, type ChangeEvent, type KeyboardEvent } from "react";
+import { Loader2, Tag, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { formatAmount, type OmniCart } from "@/lib/omnicart";
@@ -6,15 +10,51 @@ import { cartSubtotal } from "@/lib/checkout-types";
 interface OrderSummaryProps {
   cart: OmniCart;
   shippingAmount?: number;
+  /**
+   * Coupon handlers. When omitted, the coupon field is hidden (e.g. on steps
+   * where editing the cart no longer makes sense). `onApplyCoupon` should
+   * resolve to an error string on failure, or `null`/`undefined` on success.
+   */
+  onApplyCoupon?: (code: string) => Promise<string | null | undefined> | string | null | undefined;
+  onRemoveCoupon?: (code: string) => void;
 }
 
-/** Reusable OmniCart order summary card (line items + totals). */
-export function OrderSummary({ cart, shippingAmount }: OrderSummaryProps) {
+/** Reusable OmniCart order summary card (line items + coupon + totals). */
+export function OrderSummary({
+  cart,
+  shippingAmount,
+  onApplyCoupon,
+  onRemoveCoupon,
+}: OrderSummaryProps) {
   const currency = cart.currency_code || "usd";
   const subtotal = cart.subtotal ?? cartSubtotal(cart.items);
   const shipping = shippingAmount ?? cart.shipping_total ?? 0;
   const tax = cart.tax_total ?? 0;
-  const total = subtotal + shipping + tax;
+  const discount = cart.discount_total ?? 0;
+  const discounts = cart.discounts ?? [];
+  // Total never goes below zero even if a discount exceeds subtotal+tax+ship.
+  const total = Math.max(0, subtotal + shipping + tax - discount);
+
+  const [code, setCode] = useState("");
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleApply = async () => {
+    const trimmed = code.trim();
+    if (!trimmed || !onApplyCoupon) return;
+    setApplying(true);
+    setError(null);
+    try {
+      const result = await onApplyCoupon(trimmed);
+      if (result) {
+        setError(result);
+      } else {
+        setCode("");
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
 
   return (
     <Card className="sticky top-6">
@@ -45,11 +85,82 @@ export function OrderSummary({ cart, shippingAmount }: OrderSummaryProps) {
 
         <Separator />
 
+        {/* Coupon / promo code */}
+        {onApplyCoupon && (
+          <div className="space-y-2">
+            {discounts.length > 0 && (
+              <ul className="space-y-1.5">
+                {discounts.map((d) => (
+                  <li
+                    key={d.id || d.code}
+                    className="flex items-center justify-between rounded-md bg-muted/60 px-2.5 py-1.5 text-sm"
+                  >
+                    <span className="flex items-center gap-1.5 font-medium">
+                      <Tag className="h-3.5 w-3.5 text-primary" />
+                      {d.code}
+                    </span>
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      −{formatAmount(d.amount, currency)}
+                      {onRemoveCoupon && (
+                        <button
+                          type="button"
+                          onClick={() => onRemoveCoupon(d.code)}
+                          className="text-muted-foreground hover:text-destructive"
+                          aria-label={`Remove ${d.code}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <Input
+                value={code}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => {
+                  setCode(e.target.value);
+                  if (error) setError(null);
+                }}
+                onKeyDown={(e: KeyboardEvent<HTMLInputElement>) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleApply();
+                  }
+                }}
+                placeholder="Promo code"
+                className="h-9"
+                aria-label="Promo code"
+                disabled={applying}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0"
+                onClick={handleApply}
+                disabled={applying || !code.trim()}
+              >
+                {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : "Apply"}
+              </Button>
+            </div>
+            {error && <p className="text-xs text-destructive">{error}</p>}
+          </div>
+        )}
+
+        <Separator />
+
         <div className="space-y-1.5 text-sm">
           <div className="flex justify-between text-muted-foreground">
             <span>Subtotal</span>
             <span>{formatAmount(subtotal, currency)}</span>
           </div>
+          {discount > 0 && (
+            <div className="flex justify-between text-primary">
+              <span>Discount</span>
+              <span>−{formatAmount(discount, currency)}</span>
+            </div>
+          )}
           <div className="flex justify-between text-muted-foreground">
             <span>Shipping</span>
             <span>{shipping === 0 ? "Free" : formatAmount(shipping, currency)}</span>

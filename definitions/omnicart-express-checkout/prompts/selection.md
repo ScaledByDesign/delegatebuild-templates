@@ -9,7 +9,8 @@ This template provides a production-ready **OmniCart Express Checkout** storefro
   * A post-purchase **multi-offer upsell funnel** (one-click upsell → downsell → ...) driven by the OmniCart **Flow Builder**, each offer charged to the saved payment method
   * A storefront that completes a purchase against a headless commerce backend (OmniCart)
   * Stripe-powered card payments with a polished, multi-step UI
-  * A product/cart summary with line items, totals, shipping and tax
+  * A product/cart summary with line items, totals, shipping, tax and **coupon/promo codes**
+  * An itemized **receipt / confirmation** breaking out subtotal, discounts, shipping, tax and total paid
   * A region/currency-aware storefront purchase experience
 
 * Do not use it for:
@@ -22,6 +23,7 @@ This template provides a production-ready **OmniCart Express Checkout** storefro
   * **OmniCart commerce client** (the storefront SDK, internally the Medusa framework) for cart, region, shipping and order operations
   * **Worker commerce proxy** at `/api/omnicart/*` (storefront) and `/api/upsell/*` (Flow Builder upsell runtime) that injects keys/tokens server-side and keeps secrets off the client
   * **OmniCart Flow Builder client** (`src/lib/upsell-flow.ts`) that walks the merchant's upsell graph node-by-node after payment, with an in-browser demo flow fallback
+  * **Coupon / promo-code support** (`applyDiscount`/`removeDiscount` in `src/lib/omnicart.ts`) proxied to the OmniCart backend, with an in-template demo coupon table fallback
   * **Stripe** (`@stripe/stripe-js` + `@stripe/react-stripe-js`) for PCI-compliant card payments via Stripe Elements
   * **React + Vite** for fast, modern frontend development
   * **Tailwind CSS** + **Shadcn/UI** for a clean, responsive checkout interface

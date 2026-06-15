@@ -1,4 +1,4 @@
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -43,7 +43,45 @@ export function ConfirmationStep({ order, onStartOver }: ConfirmationStepProps) 
               </li>
             ))}
           </ul>
+
           <Separator />
+
+          {/* Itemized totals: subtotal, discounts, shipping, tax. */}
+          <div className="space-y-1.5 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Subtotal</span>
+              <span>{formatAmount(order.subtotal, order.currency_code)}</span>
+            </div>
+            {order.discount_total > 0 && (
+              <div className="flex justify-between text-primary">
+                <span className="flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5" />
+                  Discount
+                  {order.discounts.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      ({order.discounts.map((d) => d.code).join(", ")})
+                    </span>
+                  )}
+                </span>
+                <span>−{formatAmount(order.discount_total, order.currency_code)}</span>
+              </div>
+            )}
+            <div className="flex justify-between text-muted-foreground">
+              <span>Shipping</span>
+              <span>
+                {order.shipping_total === 0
+                  ? "Free"
+                  : formatAmount(order.shipping_total, order.currency_code)}
+              </span>
+            </div>
+            <div className="flex justify-between text-muted-foreground">
+              <span>Tax</span>
+              <span>{formatAmount(order.tax_total, order.currency_code)}</span>
+            </div>
+          </div>
+
+          <Separator />
+
           <div className="flex justify-between text-base font-semibold">
             <span>Total paid</span>
             <span>{formatAmount(order.total, order.currency_code)}</span>
