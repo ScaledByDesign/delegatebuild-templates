@@ -37,14 +37,19 @@ Never hardcode or expose secret keys client-side. The publishable key is the onl
 
 ## Checkout flow (recommended structure)
 
-The single-page checkout advances through four steps. Keep them as components under `src/components/checkout/`:
+The single-page checkout advances through these steps. Keep them as components under `src/components/checkout/`:
 
 1. **Cart** (`CartStep.tsx`) — line items, quantities, subtotal/total via `formatAmount`.
 2. **Shipping** (`ShippingStep.tsx`) — address form + shipping option selection.
 3. **Payment** (`PaymentStep.tsx`) — Stripe Elements card form; creates the payment session and completes the cart.
-4. **Confirmation** (`ConfirmationStep.tsx`) — order summary after a successful purchase.
+4. **Upsell** (`UpsellStep.tsx`) — **post-purchase one-click upsell** shown after payment is captured. Accepting charges the *same* saved payment method for an extra item (no re-entering card details) and appends it to the order; declining proceeds to confirmation.
+5. **Confirmation** (`ConfirmationStep.tsx`) — order summary after a successful purchase, reflecting any accepted upsell.
 
-A step indicator (`CheckoutSteps.tsx`) shows progress. `CheckoutPage.tsx` owns the cart state and current step, passing them down.
+A step indicator (`CheckoutSteps.tsx`) shows progress for the core cart → shipping → payment → done steps. The upsell is intentionally not a visible progress step — it appears as a bonus offer between payment capture and confirmation. `CheckoutPage.tsx` owns the cart/order state and current step, passing them down.
+
+### Post-purchase one-click upsell
+
+The upsell is the classic funnel-style offer: after the customer's payment method is captured, present a one-time offer that can be added to the existing order with a single click. To wire it to a live OmniCart backend, in `CheckoutPage.handleAcceptUpsell` call the `omnicart` client to add the upsell variant to the order using the already-captured payment session, instead of the demo timeout. Fetch the real offer (e.g. per completed cart/order) rather than using `DEMO_UPSELL`.
 
 ## Styling
 

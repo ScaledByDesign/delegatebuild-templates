@@ -5,17 +5,20 @@ import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
 import { PaymentStep } from "@/components/checkout/PaymentStep";
+import { UpsellStep } from "@/components/checkout/UpsellStep";
 import { ConfirmationStep } from "@/components/checkout/ConfirmationStep";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import type { OmniCart } from "@/lib/omnicart";
 import {
   DEMO_CART,
+  DEMO_UPSELL,
   EMPTY_ADDRESS,
   cartSubtotal,
   type CheckoutStepId,
   type OrderSummary as OrderSummaryData,
   type ShippingAddress,
   type ShippingOption,
+  type UpsellOffer,
 } from "@/lib/checkout-types";
 
 const SHIPPING_OPTIONS: ShippingOption[] = [
@@ -65,6 +68,8 @@ export function CheckoutPage() {
     return subtotal + shippingAmount + tax;
   }, [cart.items, shippingAmount]);
 
+  // Payment captured: create the order, then present the one-click upsell
+  // before showing the final confirmation.
   const handlePaid = () => {
     setOrder({
       id: `order_${Math.random().toString(36).slice(2, 10)}`,
@@ -73,6 +78,33 @@ export function CheckoutPage() {
       currency_code: currency,
       items: cart.items,
     });
+    setStep("upsell");
+  };
+
+  // One-click upsell accepted: charge the same saved payment method and append
+  // the upsell item to the existing order. In a wired backend, call the
+  // `omnicart` client here to add the variant to the order's payment session.
+  const handleAcceptUpsell = async (offer: UpsellOffer) => {
+    await new Promise((r) => setTimeout(r, 500));
+    setOrder((prev) =>
+      prev
+        ? {
+            ...prev,
+            total: prev.total + offer.offer_price,
+            items: [
+              ...prev.items,
+              {
+                id: offer.id,
+                title: offer.title,
+                quantity: 1,
+                unit_price: offer.offer_price,
+                thumbnail: null,
+                variant: { id: offer.variant_id, title: "One-click add-on" },
+              },
+            ],
+          }
+        : prev,
+    );
     setStep("confirmation");
   };
 
@@ -143,12 +175,20 @@ export function CheckoutPage() {
                 onPaid={handlePaid}
               />
             )}
+            {step === "upsell" && (
+              <UpsellStep
+                offer={DEMO_UPSELL}
+                currency={currency}
+                onAccept={handleAcceptUpsell}
+                onDecline={() => setStep("confirmation")}
+              />
+            )}
             {step === "confirmation" && order && (
               <ConfirmationStep order={order} onStartOver={startOver} />
             )}
           </section>
 
-          {step !== "confirmation" && (
+          {step !== "confirmation" && step !== "upsell" && (
             <aside>
               <OrderSummary cart={summaryCart} shippingAmount={shippingAmount} />
             </aside>
