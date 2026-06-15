@@ -36,7 +36,7 @@ jobs:
         
     - name: Deploy templates
       env:
-        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' && secrets.CLOUDFLARE_ACCOUNT_ID || '3e0e846f80abb19f4d419e4aa44dff04' }}
         CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME != '' && secrets.R2_BUCKET_NAME || 'delegatebuild-templates' }}
       run: |
