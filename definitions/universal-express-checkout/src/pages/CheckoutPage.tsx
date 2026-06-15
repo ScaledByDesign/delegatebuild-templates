@@ -267,7 +267,7 @@ export function CheckoutPage() {
       active = false;
       clearTimeout(timer);
     };
-  }, [address, liveCart, cart.id, isAddressValid]);
+  }, [address, liveCart, cart.id, isAddressValid, shippingOptionId]);
 
   // Reactive shipping method syncing
   useEffect(() => {
