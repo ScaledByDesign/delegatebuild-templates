@@ -33,6 +33,9 @@ export interface CheckoutHandoff {
   order: OrderSummary;
   /** The live upsell flow session cursor. */
   session: FlowSession;
+  /** Saved payment method id (`pm_...`) from the initial buy, used by the
+   *  upsell offer routes to charge 1-click upsells off-session. */
+  paymentMethodId?: string;
 }
 
 function storage(): Storage | null {

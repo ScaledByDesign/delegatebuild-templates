@@ -35,6 +35,13 @@ export interface StartFlowInput {
   currencyCode?: string;
   /** Override the flow to run. Defaults to the merchant's active flow. */
   flowId?: string;
+  /** Saved payment method id (`pm_...`) captured at the initial buy, so the
+   *  upsell runtime can charge it off-session for 1-click upsells. The worker
+   *  re-resolves pricing server-side; this is only the stored-method token,
+   *  never an amount. */
+  paymentMethodId?: string;
+  /** The initial-buy PaymentIntent id (`pi_...`) for order linkage. */
+  paymentIntentId?: string;
 }
 
 export interface StartFlowResult {
@@ -167,6 +174,8 @@ export async function startUpsellFlow(input: StartFlowInput): Promise<StartFlowR
       originalOrderTotal: input.originalOrderTotal,
       currencyCode: input.currencyCode,
       flowId: input.flowId,
+      paymentMethodId: input.paymentMethodId,
+      paymentIntentId: input.paymentIntentId,
     }),
   });
   if (!res.ok) {

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
+import { loadStripe } from "@stripe/stripe-js";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
-import { PaymentStep } from "@/components/checkout/PaymentStep";
+import { PaymentStep, type PaymentResult } from "@/components/checkout/PaymentStep";
 import { ProcessorPicker } from "@/components/checkout/ProcessorPicker";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
@@ -36,6 +37,7 @@ import { PROCESSOR_CLASSES, type ProcessorKind } from "@/lib/checkout/manifest";
 import type {
   CheckoutProcessorAdapter,
   ChargeTarget,
+  CheckoutCustomer,
 } from "@/lib/checkout/types";
 
 // On-page section of the one-pager checkout. NOTE: this is NOT a homepage and
@@ -133,6 +135,13 @@ export function CheckoutPage() {
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
+  // Stripe publishable key from /api/omnicart-config (empty in demo mode). Used
+  // by PaymentStep to mount Stripe Elements for payment-class processors.
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>("");
+  // PaymentIntent client secret minted by the active payment-class adapter's
+  // `initPayment` (or surfaced from an SCA `requires_action`). Null in demo mode
+  // and for CRM-class processors (which collect server-side, no Elements).
+  const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
   const [theme, setTheme] = useState<CheckoutTheme>({
     primaryColor: "#2563eb",
     accentColor: "#16a34a",
@@ -195,6 +204,11 @@ export function CheckoutPage() {
         if (!active) return;
         if (cfg.success && cfg.data?.theme) {
           setTheme(cfg.data.theme);
+        }
+        // Surface the Stripe publishable key so payment-class processors can
+        // mount Stripe Elements once a client secret is minted.
+        if (cfg.data?.stripePublishableKey) {
+          setStripePublishableKey(cfg.data.stripePublishableKey);
         }
       })
       .catch((err) => console.error("Failed to load config theme", err));
@@ -420,13 +434,100 @@ export function CheckoutPage() {
     },
   });
 
-  // Payment captured: charge through the ACTIVE adapter via the universal
-  // contract, then start the Flow Builder upsell session and HAND OFF to the
-  // first upsell offer route (`/upsell/:sessionId`). When the flow has no offers
-  // we go straight to the receipt (`/success`). Route names mirror
-  // upw-sendpaylinks' CheckoutForm.handlePaymentSuccess handoff exactly:
-  // create-session → upsellUrl `/upsell/{sessionId}`, else `/success`.
-  const handlePaid = async () => {
+  // Customer identity captured from the form, reused by initPayment + charge.
+  const buildCustomer = (fallbackEmail: string): CheckoutCustomer => ({
+    email: address.email || fallbackEmail,
+    first_name: address.first_name || undefined,
+    last_name: address.last_name || undefined,
+    phone: address.phone || undefined,
+  });
+
+  // Confirm an SCA / 3-D Secure challenge in-browser when `chargeInitial`
+  // returns `requires_action`. Loads Stripe.js with the publishable key and
+  // runs `handleNextAction` against the returned PaymentIntent client secret.
+  // Returns true once the intent reaches `succeeded` (the page then retries the
+  // charge). Without a publishable key (demo / CRM-class) there is nothing to
+  // confirm — return false so the caller surfaces a recoverable message.
+  const confirmSca = async (clientSecret: string): Promise<boolean> => {
+    if (!stripePublishableKey) return false;
+    try {
+      const stripe = await loadStripe(stripePublishableKey);
+      if (!stripe) return false;
+      const { error, paymentIntent } = await stripe.handleNextAction({ clientSecret });
+      if (error) {
+        console.error("SCA confirmation failed", error);
+        return false;
+      }
+      return paymentIntent?.status === "succeeded";
+    } catch (err) {
+      console.error("SCA confirmation threw", err);
+      return false;
+    }
+  };
+
+  // -- Prepare the live payment session (payment-class only) -------------------
+  // FIRST call of the two-call browser flow: as soon as the active processor is
+  // payment-class, the address is valid, and no client secret is minted yet,
+  // ask the adapter to `initPayment`. When it returns `confirm_client_secret`
+  // (e.g. OmniCart/Medusa pre-creates a PaymentIntent) we thread that secret +
+  // publishable key into PaymentStep so the shopper confirms the card on-page.
+  // CRM-class processors and the `demo` branch mount no Stripe Elements.
+  useEffect(() => {
+    if (!adapter) return;
+    if (PROCESSOR_CLASSES[processor] !== "payment") return;
+    if (!adapter.initPayment) return;
+    if (!isAddressValid) return;
+    if (paymentClientSecret) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const init = await adapter.initPayment!({
+          cart,
+          customer: buildCustomer("customer@example.com"),
+          chargeTarget: buildChargeTarget(),
+        });
+        if (cancelled) return;
+        if ("status" in init && init.status === "failed") {
+          // Don't block the page: PaymentStep stays in its demo fallback.
+          setFlowError(init.userMessage);
+          return;
+        }
+        if ("mode" in init && init.mode === "confirm_client_secret") {
+          setPaymentClientSecret(init.clientSecret);
+          if (init.publishableKey) setStripePublishableKey(init.publishableKey);
+        }
+        // `collect_payment_method` (no pre-minted secret) and `demo` leave the
+        // step in its demo fallback in this client-only template — a wired
+        // Stripe build mints the secret server-side at charge time instead.
+      } catch (err) {
+        if (!cancelled) console.error("initPayment failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // buildChargeTarget / buildCustomer close over cart + address + totals; the
+    // primitive deps below are sufficient to re-run when those change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adapter, processor, isAddressValid, paymentClientSecret, cart.id, grandTotal]);
+
+  // Reset any minted payment session when the processor changes so we don't
+  // confirm one processor's client secret against another.
+  useEffect(() => {
+    setPaymentClientSecret(null);
+  }, [processor]);
+
+  // Payment captured: the PaymentStep has already confirmed the card / wallet
+  // on-page (payment-class with a live client secret) — `payment` carries the
+  // PaymentIntent + saved payment-method ids. Charge through the ACTIVE adapter
+  // via the universal contract (CRM-class processors charge here for the first
+  // time), then start the Flow Builder upsell session and HAND OFF to the first
+  // upsell offer route (`/upsell/:sessionId`). When the flow has no offers we go
+  // straight to the receipt (`/success`). Route names mirror upw-sendpaylinks'
+  // CheckoutForm.handlePaymentSuccess: create-session → `/upsell/{sessionId}`,
+  // else `/success`.
+  const handlePaid = async (payment?: PaymentResult) => {
     setFlowError(null);
     setPaying(true);
     try {
@@ -470,52 +571,82 @@ export function CheckoutPage() {
       };
 
       const chargeTarget = buildChargeTarget();
-      const customer = {
-        email: address.email || demoOrder.email,
-        first_name: address.first_name || undefined,
-        last_name: address.last_name || undefined,
-        phone: address.phone || undefined,
-      };
+      const customer = buildCustomer(demoOrder.email);
 
-      // FIRST call (payment-class only): initPayment.
-      if (PROCESSOR_CLASSES[processor] === "payment" && active.initPayment) {
-        const init = await active.initPayment({ cart, customer, chargeTarget });
-        if ("status" in init && init.status === "failed") {
-          setFlowError(init.userMessage);
-          return;
-        }
+      // The card / wallet was already confirmed on-page by PaymentStep for
+      // payment-class processors with a live client secret (the FIRST call,
+      // `initPayment`, ran in the prepare effect). Forward the minted
+      // payment-method id to the server charge so it can confirm + save it.
+      if (payment?.paymentMethodId) {
+        chargeTarget.metadata = {
+          ...chargeTarget.metadata,
+          paymentMethodId: payment.paymentMethodId,
+        };
       }
 
-      // chargeInitial (all processors).
-      const result = await active.chargeInitial({
+      // chargeInitial (all processors). For payment-class this confirms the
+      // server-side PaymentIntent / completes the cart; for CRM-class
+      // (Konnektive, Sticky.io) this is the FIRST and only charge call.
+      let result = await active.chargeInitial({
         cart,
         customer,
         chargeTarget,
         idempotencyKey: demoOrder.id,
       });
+
+      // SCA / 3-D Secure: confirm the returned client secret in-browser, then
+      // retry the charge with the same idempotency key.
+      if (result.status === "requires_action") {
+        const handled = await confirmSca(result.clientSecret);
+        if (!handled) {
+          setFlowError(
+            "We couldn't verify this payment with your bank. Please try again or use a different card.",
+          );
+          return;
+        }
+        result = await active.chargeInitial({
+          cart,
+          customer,
+          chargeTarget,
+          idempotencyKey: demoOrder.id,
+        });
+      }
+
       if (result.status === "failed") {
         setFlowError(result.userMessage);
         return;
       }
       if (result.status === "requires_action") {
+        // Still pending after the retry — surface a recoverable message.
         setFlowError(
-          "Your bank needs to verify this payment (3-D Secure). Please complete the verification and try again.",
+          "We couldn't complete your payment after verification. Please try again.",
         );
         return;
       }
       const baseOrder: OrderSummaryData =
         result.status === "succeeded" ? result.order : demoOrder;
 
-      // Start the post-purchase Flow Builder upsell session.
+      // Start the post-purchase Flow Builder upsell session. Thread the saved
+      // payment method so the upsell runtime can charge it off-session for
+      // 1-click upsells (the worker re-resolves pricing server-side; we only
+      // pass the stored-payment-method token / order linkage, never a price).
       const { session, entry_node } = await startUpsellFlow({
         orderId: baseOrder.id,
         originalOrderTotal: baseOrder.total,
         currencyCode: baseOrder.currency_code,
+        paymentMethodId: payment?.paymentMethodId,
+        paymentIntentId: payment?.paymentIntentId,
       });
 
       // Persist the handoff so the separate upsell/receipt routes can rehydrate
       // the paid order + flow cursor (mirror of server-side session retrieval).
-      saveHandoff({ code, order: baseOrder, session });
+      // The saved payment method rides along for the 1-click upsell charge.
+      saveHandoff({
+        code,
+        order: baseOrder,
+        session,
+        paymentMethodId: payment?.paymentMethodId,
+      });
 
       if (entry_node && session.current_button_id) {
         // Hand off to the FIRST upsell offer page. Each offer is its own route.
@@ -628,6 +759,12 @@ export function CheckoutPage() {
             <PaymentStep
               amount={grandTotal}
               currency={currency}
+              stripePublishableKey={
+                PROCESSOR_CLASSES[processor] === "payment" ? stripePublishableKey : undefined
+              }
+              clientSecret={
+                PROCESSOR_CLASSES[processor] === "payment" ? paymentClientSecret : null
+              }
               busy={paying}
               isAddressValid={isAddressValid}
               onPaid={handlePaid}
