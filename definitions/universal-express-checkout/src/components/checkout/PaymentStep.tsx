@@ -17,8 +17,9 @@ interface PaymentStepProps {
   /** True while the parent finalizes the order + bootstraps the upsell flow
    *  after `onPaid` resolves (the page then navigates to `/upsell/:sessionId`). */
   busy?: boolean;
-  onBack: () => void;
+  isAddressValid: boolean;
   onPaid: () => void;
+  onInvalidAddress: () => void;
 }
 
 interface ConfigResponse {
@@ -31,12 +32,16 @@ function PaymentForm({
   amount,
   currency,
   hasStripe,
+  isAddressValid,
   onPaid,
+  onInvalidAddress,
 }: {
   amount: number;
   currency: string;
   hasStripe: boolean;
+  isAddressValid: boolean;
   onPaid: () => void;
+  onInvalidAddress: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -44,6 +49,11 @@ function PaymentForm({
   const [error, setError] = useState<string | null>(null);
 
   const handlePay = async () => {
+    if (!isAddressValid) {
+      onInvalidAddress();
+      setError("Please fill out all required shipping fields first.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -105,7 +115,14 @@ function PaymentForm({
 }
 
 /** Step 3 — Stripe-powered payment for the OmniCart checkout. */
-export function PaymentStep({ amount, currency, busy = false, onBack, onPaid }: PaymentStepProps) {
+export function PaymentStep({
+  amount,
+  currency,
+  busy = false,
+  isAddressValid,
+  onPaid,
+  onInvalidAddress,
+}: PaymentStepProps) {
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -148,7 +165,9 @@ export function PaymentStep({ amount, currency, busy = false, onBack, onPaid }: 
                 amount={amount}
                 currency={currency}
                 hasStripe
+                isAddressValid={isAddressValid}
                 onPaid={onPaid}
+                onInvalidAddress={onInvalidAddress}
               />
             </Elements>
           ) : (
@@ -156,16 +175,13 @@ export function PaymentStep({ amount, currency, busy = false, onBack, onPaid }: 
               amount={amount}
               currency={currency}
               hasStripe={false}
+              isAddressValid={isAddressValid}
               onPaid={onPaid}
+              onInvalidAddress={onInvalidAddress}
             />
           )}
         </CardContent>
       </Card>
-      <div className="flex justify-start">
-        <Button variant="outline" size="lg" onClick={onBack} disabled={busy}>
-          Back to shipping
-        </Button>
-      </div>
     </div>
   );
 }

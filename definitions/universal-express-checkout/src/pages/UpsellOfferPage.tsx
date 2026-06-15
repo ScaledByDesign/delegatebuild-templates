@@ -66,7 +66,7 @@ export function UpsellOfferPage() {
     }
   }, [nodeIdParam]);
 
-  const options = node?.accept_options ?? [];
+  const options = useMemo(() => node?.accept_options ?? [], [node?.accept_options]);
   const isMultiAccept = options.length > 0;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => {

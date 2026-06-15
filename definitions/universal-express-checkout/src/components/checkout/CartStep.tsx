@@ -7,11 +7,10 @@ interface CartStepProps {
   cart: OmniCart;
   onUpdateQuantity: (itemId: string, quantity: number) => void;
   onRemove: (itemId: string) => void;
-  onContinue: () => void;
 }
 
 /** Step 1 — review OmniCart line items, adjust quantities, continue. */
-export function CartStep({ cart, onUpdateQuantity, onRemove, onContinue }: CartStepProps) {
+export function CartStep({ cart, onUpdateQuantity, onRemove }: CartStepProps) {
   const currency = cart.currency_code || "usd";
 
   if (cart.items.length === 0) {
@@ -81,11 +80,6 @@ export function CartStep({ cart, onUpdateQuantity, onRemove, onContinue }: CartS
           ))}
         </CardContent>
       </Card>
-      <div className="flex justify-end">
-        <Button size="lg" onClick={onContinue}>
-          Continue to shipping
-        </Button>
-      </div>
     </div>
   );
 }

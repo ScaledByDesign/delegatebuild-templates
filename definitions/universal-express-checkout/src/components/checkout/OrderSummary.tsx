@@ -162,8 +162,11 @@ export function OrderSummary({
             <span>{formatAmount(subtotal, currency)}</span>
           </div>
           {discount > 0 && (
-            <div className="flex justify-between text-primary">
-              <span>Discount</span>
+            <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 font-medium px-2 py-1.5 rounded-md border border-emerald-200/50 dark:border-emerald-900/30">
+              <span className="flex items-center gap-1.5 text-xs">
+                <Tag className="h-3.5 w-3.5" />
+                Discount Applied
+              </span>
               <span>−{formatAmount(discount, currency)}</span>
             </div>
           )}
@@ -182,6 +185,33 @@ export function OrderSummary({
         <div className="flex justify-between text-base font-semibold">
           <span>Total</span>
           <span>{formatAmount(total, currency)}</span>
+        </div>
+
+        <Separator />
+
+        <div className="pt-2 space-y-3">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Why Choose Us?</p>
+          <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 font-mono">✓</span>
+            <div>
+              <p className="font-semibold text-foreground">60-Day Satisfaction Guarantee</p>
+              <p className="text-[11px] leading-snug">100% money back guarantee if you are not fully satisfied.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 font-mono">✓</span>
+            <div>
+              <p className="font-semibold text-foreground">Over 45,579 Shipped Orders</p>
+              <p className="text-[11px] leading-snug">We have successfully processed and shipped orders globally.</p>
+            </div>
+          </div>
+          <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
+            <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0 font-mono">✓</span>
+            <div>
+              <p className="font-semibold text-foreground">Secure Payments</p>
+              <p className="text-[11px] leading-snug">SSL encrypted checkout ensuring your payment details are secure.</p>
+            </div>
+          </div>
         </div>
       </CardContent>
     </Card>

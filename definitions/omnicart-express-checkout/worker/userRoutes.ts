@@ -157,7 +157,132 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
   };
 
-  app.post('/api/upsell/session', (c) => forwardUpsell(c, '/api/upsell-flows/session'));
+  app.post('/api/upsell/session', async (c) => {
+    const env = c.env as OmniCartEnv;
+    const { base, token } = upsellRuntime(c);
+    if (!base) {
+      return c.json({ success: false, error: 'Upsell runtime not configured' }, 503);
+    }
+
+    // Parse incoming camelCase body
+    let clientBody: any = {};
+    try {
+      clientBody = await c.req.json();
+    } catch {
+      // Empty body
+    }
+
+    // Map to platform's snake_case parameters
+    const platformBody = {
+      order_id: clientBody.orderId,
+      original_order_total: clientBody.originalOrderTotal,
+      flow_id: clientBody.flowId,
+      currency_code: clientBody.currencyCode,
+    };
+
+    const target = `${base}/api/flow-builder/init`;
+    const headers = new Headers(c.req.raw.headers);
+    headers.delete('host');
+    headers.set('content-type', 'application/json');
+    headers.set('accept', 'application/json');
+    if (token) headers.set('authorization', `Bearer ${token}`);
+
+    try {
+      const upstream = await fetch(target, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(platformBody),
+      });
+
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
+      }
+
+      const platformJson = await upstream.json() as { session: any; entry_button: any };
+      const session = platformJson.session;
+      const entry_button = platformJson.entry_button;
+
+      // Helper to read journey steps
+      const readJourneySteps = (journey: any): any[] => {
+        if (!journey || typeof journey !== "object" || Array.isArray(journey)) {
+          return [];
+        }
+        const steps = journey.steps;
+        if (!Array.isArray(steps)) return [];
+        return steps;
+      };
+
+      // Map session to FlowSession
+      const flowSession = session ? {
+        id: session.id,
+        flow_id: session.flowId,
+        status: session.status,
+        current_button_id: session.currentButtonId,
+        journey: readJourneySteps(session.journey).map((s: any) => ({
+          button_id: s.buttonId,
+          button_text: s.buttonText,
+          action: s.action,
+          revenue: s.revenue,
+          timestamp: s.timestamp,
+        })),
+        total_revenue: session.totalRevenueCents ?? 0,
+        upsell_total: session.upsellTotalCents ?? 0,
+        currency_code: session.currencyCode || "USD",
+        version: session.version ?? 1,
+      } : null;
+
+      // Map button to FlowNode
+      let flowNode = null;
+      if (entry_button) {
+        const meta = (entry_button.metadata ?? {}) as Record<string, unknown>;
+        const pitch = typeof meta.description === "string" ? meta.description : (typeof meta.subheadline === "string" ? meta.subheadline : null);
+        const compare_at_price = typeof meta.compareAtPrice === "number" ? meta.compareAtPrice : null;
+        const decline_text = typeof meta.declineText === "string" ? meta.declineText : null;
+        const accept_options = Array.isArray(entry_button.acceptOptions)
+          ? entry_button.acceptOptions.map((v: any) => ({
+              id: v.id,
+              label: v.label || "",
+              price: v.price,
+              compareAtPrice: v.compareAtPrice ?? null,
+              ctaText: v.ctaText ?? null,
+            }))
+          : null;
+
+        flowNode = {
+          id: entry_button.id,
+          label: typeof meta.headline === "string" && meta.headline ? meta.headline : entry_button.label,
+          button_text: entry_button.buttonText,
+          pitch,
+          display_price: entry_button.displayPrice ?? null,
+          currency_code: entry_button.currencyCode || "USD",
+          compare_at_price,
+          accept_options,
+          decline_text,
+          success_next_button_id: entry_button.successNextButtonId ?? null,
+          decline_next_button_id: entry_button.declineNextButtonId ?? null,
+          is_terminal_success: entry_button.isTerminalSuccess ?? false,
+          is_terminal_decline: entry_button.isTerminalDecline ?? false,
+          timer: entry_button.timer ?? null,
+          external_page_url: entry_button.externalPageUrl ?? null,
+        };
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          session: flowSession,
+          entry_node: flowNode,
+        }
+      });
+    } catch (err) {
+      return c.json({
+        success: false,
+        error: `Upsell runtime unreachable: ${err instanceof Error ? err.message : 'unknown'}`
+      }, 502);
+    }
+  });
+
   app.get('/api/upsell/click', (c) => forwardUpsell(c, '/api/upsell/click'));
 
   // --- OmniCart config (publishable Stripe key for the browser) -------------

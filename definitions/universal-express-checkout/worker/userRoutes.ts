@@ -95,6 +95,127 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ success: false, error: `Unknown processor: ${kind}` }, 404);
     }
 
+    // Check if the platform's Flow Builder upsell runtime is set (indicating the platform is our backend)
+    const { base: runtimeUrl, token: runtimeToken } = upsellRuntime(c);
+    const upstreamPath = c.req.path.replace(
+      new RegExp(`^/api/checkout/${kind}`),
+      '',
+    );
+
+    if (runtimeUrl) {
+      let clientBody: any = {};
+      if (c.req.method === 'POST') {
+        try {
+          clientBody = await c.req.json();
+        } catch {
+          // Empty body
+        }
+      }
+
+      const checkoutCode = clientBody.metadata?.checkoutCode || "demo";
+      const headers = new Headers();
+      headers.set('content-type', 'application/json');
+      headers.set('accept', 'application/json');
+      if (runtimeToken) {
+        headers.set('authorization', `Bearer ${runtimeToken}`);
+      }
+
+      if (upstreamPath === '/init-payment') {
+        const initBody = {
+          token: checkoutCode,
+          provider: kind,
+          customer: {
+            email: clientBody.email || "",
+          },
+          currency: clientBody.currency,
+          totalOverride: clientBody.totalCents,
+          lineItems: clientBody.lineItems,
+          metadata: clientBody.metadata,
+        };
+
+        const target = `${runtimeUrl}/api/checkout/initialize`;
+        try {
+          const upstream = await fetch(target, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(initBody),
+          });
+
+          if (!upstream.ok) {
+            const errText = await upstream.text();
+            return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
+          }
+
+          const resJson = await upstream.json() as any;
+          return c.json(resJson);
+        } catch (err) {
+          return c.json(
+            { success: false, error: `Platform checkout initialization unreachable: ${err instanceof Error ? err.message : 'unknown'}` },
+            502,
+          );
+        }
+      } else if (upstreamPath === '/charge-initial') {
+        const completeBody = {
+          token: checkoutCode,
+          orderId: clientBody.idempotencyKey,
+          transactionId: clientBody.metadata?.paymentIntentId || clientBody.metadata?.paymentMethodId || clientBody.idempotencyKey,
+          provider: kind,
+          providerOrderId: clientBody.metadata?.paymentIntentId,
+          customerEmail: clientBody.customer?.email,
+          customerName: `${clientBody.customer?.first_name || ""} ${clientBody.customer?.last_name || ""}`.trim(),
+          amount: clientBody.totalCents,
+          currency: clientBody.currency,
+          lineItems: clientBody.lineItems,
+          metadata: clientBody.metadata,
+          customer: {
+            firstName: clientBody.customer?.first_name,
+            lastName: clientBody.customer?.last_name,
+            phone: clientBody.customer?.phone,
+          },
+        };
+
+        const target = `${runtimeUrl}/api/checkout/complete`;
+        try {
+          const upstream = await fetch(target, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(completeBody),
+          });
+
+          if (!upstream.ok) {
+            const errText = await upstream.text();
+            return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
+          }
+
+          const resJson = await upstream.json() as any;
+
+          if (resJson.status === "requires_action") {
+            return c.json({
+              status: "requires_action",
+              clientSecret: resJson.clientSecret,
+              returnUrl: resJson.returnUrl,
+            });
+          }
+
+          if (resJson.status === "succeeded") {
+            return c.json({
+              status: "succeeded",
+              processorOrderId: resJson.processorOrderId,
+              order: resJson.order,
+            });
+          }
+
+          return c.json(resJson);
+        } catch (err) {
+          return c.json(
+            { success: false, error: `Platform checkout complete unreachable: ${err instanceof Error ? err.message : 'unknown'}` },
+            502,
+          );
+        }
+      }
+    }
+
+    // Fallback: proxy to independent processor backend (original behavior)
     const backend = processorBackend(env, kind);
     if (!backend) {
       // No backend wired for this processor -> demo mode.
@@ -105,10 +226,6 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
 
     const url = new URL(c.req.url);
-    const upstreamPath = c.req.path.replace(
-      new RegExp(`^/api/checkout/${kind}`),
-      '',
-    );
     const target = `${backend.replace(/\/$/, '')}/checkout${upstreamPath}${url.search}`;
 
     const headers = new Headers(c.req.raw.headers);
@@ -270,20 +387,192 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
   };
 
-  app.post('/api/upsell/session', (c) => forwardUpsell(c, '/api/upsell-flows/session'));
+  app.post('/api/upsell/session', async (c) => {
+    const env = c.env as OmniCartEnv;
+    const { base, token } = upsellRuntime(c);
+    if (!base) {
+      return c.json({ success: false, error: 'Upsell runtime not configured' }, 503);
+    }
+
+    // Parse incoming camelCase body
+    let clientBody: any = {};
+    try {
+      clientBody = await c.req.json();
+    } catch {
+      // Empty body
+    }
+
+    // Map to platform's snake_case parameters
+    const platformBody = {
+      order_id: clientBody.orderId,
+      original_order_total: clientBody.originalOrderTotal,
+      flow_id: clientBody.flowId,
+      currency_code: clientBody.currencyCode,
+    };
+
+    const target = `${base}/api/flow-builder/init`;
+    const headers = new Headers(c.req.raw.headers);
+    headers.delete('host');
+    headers.set('content-type', 'application/json');
+    headers.set('accept', 'application/json');
+    if (token) headers.set('authorization', `Bearer ${token}`);
+
+    try {
+      const upstream = await fetch(target, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(platformBody),
+      });
+
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
+      }
+
+      const platformJson = await upstream.json() as { session: any; entry_button: any };
+      const session = platformJson.session;
+      const entry_button = platformJson.entry_button;
+
+      // Helper to read journey steps
+      const readJourneySteps = (journey: any): any[] => {
+        if (!journey || typeof journey !== "object" || Array.isArray(journey)) {
+          return [];
+        }
+        const steps = journey.steps;
+        if (!Array.isArray(steps)) return [];
+        return steps;
+      };
+
+      // Map session to FlowSession
+      const flowSession = session ? {
+        id: session.id,
+        flow_id: session.flowId,
+        status: session.status,
+        current_button_id: session.currentButtonId,
+        journey: readJourneySteps(session.journey).map((s: any) => ({
+          button_id: s.buttonId,
+          button_text: s.buttonText,
+          action: s.action,
+          revenue: s.revenue,
+          timestamp: s.timestamp,
+        })),
+        total_revenue: session.totalRevenueCents ?? 0,
+        upsell_total: session.upsellTotalCents ?? 0,
+        currency_code: session.currencyCode || "USD",
+        version: session.version ?? 1,
+      } : null;
+
+      // Map button to FlowNode
+      let flowNode = null;
+      if (entry_button) {
+        const meta = (entry_button.metadata ?? {}) as Record<string, unknown>;
+        const pitch = typeof meta.description === "string" ? meta.description : (typeof meta.subheadline === "string" ? meta.subheadline : null);
+        const compare_at_price = typeof meta.compareAtPrice === "number" ? meta.compareAtPrice : null;
+        const decline_text = typeof meta.declineText === "string" ? meta.declineText : null;
+        const accept_options = Array.isArray(entry_button.acceptOptions)
+          ? entry_button.acceptOptions.map((v: any) => ({
+              id: v.id,
+              label: v.label || "",
+              price: v.price,
+              compareAtPrice: v.compareAtPrice ?? null,
+              ctaText: v.ctaText ?? null,
+            }))
+          : null;
+
+        flowNode = {
+          id: entry_button.id,
+          label: typeof meta.headline === "string" && meta.headline ? meta.headline : entry_button.label,
+          button_text: entry_button.buttonText,
+          pitch,
+          display_price: entry_button.displayPrice ?? null,
+          currency_code: entry_button.currencyCode || "USD",
+          compare_at_price,
+          accept_options,
+          decline_text,
+          success_next_button_id: entry_button.successNextButtonId ?? null,
+          decline_next_button_id: entry_button.declineNextButtonId ?? null,
+          is_terminal_success: entry_button.isTerminalSuccess ?? false,
+          is_terminal_decline: entry_button.isTerminalDecline ?? false,
+          timer: entry_button.timer ?? null,
+          external_page_url: entry_button.externalPageUrl ?? null,
+        };
+      }
+
+      return c.json({
+        success: true,
+        data: {
+          session: flowSession,
+          entry_node: flowNode,
+        }
+      });
+    } catch (err) {
+      return c.json({
+        success: false,
+        error: `Upsell runtime unreachable: ${err instanceof Error ? err.message : 'unknown'}`
+      }, 502);
+    }
+  });
+
   app.get('/api/upsell/click', (c) => forwardUpsell(c, '/api/upsell/click'));
 
   // --- OmniCart config (publishable Stripe key for the browser) -------------
   // Returns only public, browser-safe config for initializing Stripe Elements.
-  app.get('/api/omnicart-config', (c) => {
+  app.get('/api/omnicart-config', async (c) => {
     const env = c.env as OmniCartEnv & { STRIPE_PUBLISHABLE_KEY?: string };
+    const code = c.req.query('code') || 'demo';
+
+    const { base: runtimeUrl, token: runtimeToken } = upsellRuntime(c);
+    const backendConfigured = Boolean(env.OMNICART_BACKEND_URL && env.OMNICART_UPSELL_RUNTIME_URL);
+
+    const defaultTheme = {
+      logoUrl: '',
+      primaryColor: '#2563eb',
+      accentColor: '#16a34a',
+      fontFamily: 'Inter, sans-serif',
+      supportEmail: 'support@example.com',
+      statementName: 'MERCHANT',
+    };
+
+    let theme = defaultTheme;
+
+    if (backendConfigured && runtimeUrl && code !== 'demo') {
+      try {
+        const headers = new Headers();
+        headers.set('accept', 'application/json');
+        if (runtimeToken) {
+          headers.set('authorization', `Bearer ${runtimeToken}`);
+        }
+
+        const response = await fetch(`${runtimeUrl}/api/checkout/config?token=${encodeURIComponent(code)}`, {
+          headers,
+        });
+
+        if (response.ok) {
+          const resBody = await response.json() as any;
+          if (resBody.success && resBody.theme) {
+            theme = {
+              logoUrl: resBody.theme.logoUrl || defaultTheme.logoUrl,
+              primaryColor: resBody.theme.primaryColor || defaultTheme.primaryColor,
+              accentColor: resBody.theme.accentColor || defaultTheme.accentColor,
+              fontFamily: resBody.theme.fontFamily || defaultTheme.fontFamily,
+              supportEmail: resBody.theme.supportEmail || defaultTheme.supportEmail,
+              statementName: resBody.theme.statementName || defaultTheme.statementName,
+            };
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch checkout theme", err);
+      }
+    }
+
     return c.json({
       success: true,
       data: {
         stripePublishableKey: env.STRIPE_PUBLISHABLE_KEY || '',
         // The client uses this flag to decide whether to drive the real Flow
         // Builder runtime or fall back to the in-browser demo flow.
-        backendConfigured: Boolean(env.OMNICART_BACKEND_URL && env.OMNICART_UPSELL_RUNTIME_URL),
+        backendConfigured,
+        theme,
       },
     });
   });

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
-import { CheckoutSteps } from "@/components/checkout/CheckoutSteps";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
@@ -93,7 +92,16 @@ export function CheckoutPage() {
   const { code = "demo" } = useParams<{ code: string }>();
   const navigate = useNavigate();
 
-  const [section, setSection] = useState<CheckoutSection>("cart");
+  interface CheckoutTheme {
+    logoUrl?: string;
+    primaryColor: string;
+    accentColor: string;
+    fontFamily: string;
+    supportEmail: string;
+    statementName: string;
+  }
+
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
   // Active payment processor (manifest-driven). Drives which adapter the page
   // resolves from the registry and charges through. OmniCart is the default so
   // the retained cart lifecycle is exercised out of the box.
@@ -125,6 +133,13 @@ export function CheckoutPage() {
   const [busy, setBusy] = useState(false);
   const [paying, setPaying] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<CheckoutTheme>({
+    primaryColor: "#2563eb",
+    accentColor: "#16a34a",
+    fontFamily: "Inter, sans-serif",
+    supportEmail: "support@example.com",
+    statementName: "MERCHANT",
+  });
 
   // -- Lifecycle bootstrap ----------------------------------------------------
   // On mount, try to create a real OmniCart cart and seed it with the demo
@@ -170,6 +185,113 @@ export function CheckoutPage() {
       cancelled = true;
     };
   }, [processor]);
+
+  // Load the builder's theme configurations on mount
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/omnicart-config?code=${encodeURIComponent(code)}`)
+      .then((r) => r.json())
+      .then((cfg) => {
+        if (!active) return;
+        if (cfg.success && cfg.data?.theme) {
+          setTheme(cfg.data.theme);
+        }
+      })
+      .catch((err) => console.error("Failed to load config theme", err));
+    return () => {
+      active = false;
+    };
+  }, [code]);
+
+  const requiredAddressFields: (keyof ShippingAddress)[] = [
+    "first_name",
+    "last_name",
+    "email",
+    "address_1",
+    "city",
+    "postal_code",
+    "country_code",
+  ];
+  const isAddressValid = requiredAddressFields.every((k) => (address[k] ?? "").toString().trim().length > 0);
+
+  // Debounced reactive shipping address syncing
+  useEffect(() => {
+    if (!liveCart) return;
+    if (!isAddressValid) return;
+
+    let active = true;
+    const timer = setTimeout(async () => {
+      setBusy(true);
+      try {
+        const contact = await updateCartContact(cart.id, {
+          email: address.email || undefined,
+          shipping_address: {
+            first_name: address.first_name,
+            last_name: address.last_name,
+            phone: address.phone,
+            address_1: address.address_1,
+            city: address.city,
+            province: address.province,
+            postal_code: address.postal_code,
+            country_code: address.country_code.toLowerCase(),
+          },
+        });
+        if (!active) return;
+        if (contact.ok && contact.data) {
+          setCart(contact.data);
+          setPromotions(contact.data.promotions ?? []);
+        }
+
+        const opts = await listShippingOptions(cart.id);
+        if (!active) return;
+        if (opts.ok && opts.data && opts.data.length > 0) {
+          const mapped: ShippingOption[] = opts.data.map((o) => ({
+            id: o.id,
+            name: o.name,
+            amount: o.amount ?? 0,
+          }));
+          setShippingOptions(mapped);
+          const selected = mapped.some((o) => o.id === shippingOptionId)
+            ? shippingOptionId
+            : mapped[0].id;
+          setShippingOptionId(selected);
+        }
+      } catch (err) {
+        console.error("Failed to sync address", err);
+      } finally {
+        if (active) setBusy(false);
+      }
+    }, 1000);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [address, liveCart, cart.id, isAddressValid]);
+
+  // Reactive shipping method syncing
+  useEffect(() => {
+    if (!liveCart) return;
+    let active = true;
+    (async () => {
+      setBusy(true);
+      try {
+        const applied = await addShippingMethod(cart.id, shippingOptionId);
+        if (!active) return;
+        if (applied.ok && applied.data) {
+          setCart(applied.data);
+          setPromotions(applied.data.promotions ?? []);
+        }
+      } catch (err) {
+        console.error("Failed to apply shipping option", err);
+      } finally {
+        if (active) setBusy(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [shippingOptionId, liveCart, cart.id]);
 
   const shippingAmount = useMemo(
     () => shippingOptions.find((o) => o.id === shippingOptionId)?.amount ?? 0,
@@ -277,63 +399,6 @@ export function CheckoutPage() {
     });
   };
 
-  // -- Shipping step ----------------------------------------------------------
-  const handleShippingContinue = async () => {
-    setFlowError(null);
-    if (liveCart) {
-      setBusy(true);
-      try {
-        const contact = await updateCartContact(cart.id, {
-          email: address.email || undefined,
-          shipping_address: {
-            first_name: address.first_name,
-            last_name: address.last_name,
-            phone: address.phone,
-            address_1: address.address_1,
-            city: address.city,
-            province: address.province,
-            postal_code: address.postal_code,
-            country_code: address.country_code.toLowerCase(),
-          },
-        });
-        if (contact.ok && contact.data) {
-          setCart(contact.data);
-          setPromotions(contact.data.promotions ?? []);
-        } else if (!contact.demo) {
-          setFlowError(contact.error ?? "Could not save your details.");
-          setBusy(false);
-          return;
-        }
-
-        const opts = await listShippingOptions(cart.id);
-        if (opts.ok && opts.data && opts.data.length > 0) {
-          const mapped: ShippingOption[] = opts.data.map((o) => ({
-            id: o.id,
-            name: o.name,
-            amount: o.amount ?? 0,
-          }));
-          setShippingOptions(mapped);
-          const selected = mapped.some((o) => o.id === shippingOptionId)
-            ? shippingOptionId
-            : mapped[0].id;
-          setShippingOptionId(selected);
-          const applied = await addShippingMethod(cart.id, selected);
-          if (applied.ok && applied.data) {
-            setCart(applied.data);
-            setPromotions(applied.data.promotions ?? []);
-          } else if (!applied.demo) {
-            setFlowError(applied.error ?? "Could not set shipping method.");
-            setBusy(false);
-            return;
-          }
-        }
-      } finally {
-        setBusy(false);
-      }
-    }
-    setSection("payment");
-  };
-
   // Build the authoritative charge target from the current cart + totals.
   const buildChargeTarget = (): ChargeTarget => ({
     currency,
@@ -346,6 +411,7 @@ export function CheckoutPage() {
       title: i.title,
     })),
     metadata: {
+      checkoutCode: code,
       campaignId: "demo-campaign",
       productId: cart.items[0]?.variant?.id ?? "demo-product",
       offerId: "demo-offer",
@@ -365,6 +431,30 @@ export function CheckoutPage() {
     setPaying(true);
     try {
       const active = adapter ?? (await getCheckoutAdapter(processor));
+
+      // Ensure shipping address is synced to the backend before processing payment
+      if (liveCart && isAddressValid) {
+        try {
+          const contact = await updateCartContact(cart.id, {
+            email: address.email || undefined,
+            shipping_address: {
+              first_name: address.first_name,
+              last_name: address.last_name,
+              phone: address.phone,
+              address_1: address.address_1,
+              city: address.city,
+              province: address.province,
+              postal_code: address.postal_code,
+              country_code: address.country_code.toLowerCase(),
+            },
+          });
+          if (contact.ok && contact.data) {
+            setCart(contact.data);
+          }
+        } catch (e) {
+          console.error("Final sync on pay failed", e);
+        }
+      }
 
       const demoOrder: OrderSummaryData = {
         id: `order_${Math.random().toString(36).slice(2, 10)}`,
@@ -459,23 +549,48 @@ export function CheckoutPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: theme.fontFamily }}>
+      <style>{`
+        :root {
+          --primary: ${theme.primaryColor};
+          --primary-foreground: #ffffff;
+          --ring: ${theme.primaryColor};
+        }
+        .text-primary { color: ${theme.primaryColor} !important; }
+        .bg-primary { background-color: ${theme.primaryColor} !important; }
+        .border-primary { border-color: ${theme.primaryColor} !important; }
+        .focus-visible\\:ring-primary:focus-visible { --tw-ring-color: ${theme.primaryColor} !important; }
+        .has-\\[\\:checked\\]\\:border-primary:has(:checked) { border-color: ${theme.primaryColor} !important; }
+        
+        /* Accents */
+        .text-accent { color: ${theme.accentColor} !important; }
+        .bg-accent { background-color: ${theme.accentColor} !important; }
+        .border-accent { border-color: ${theme.accentColor} !important; }
+      `}</style>
+      
+      {/* Announcement Banner */}
+      <div className="bg-amber-500 text-amber-950 text-xs font-semibold py-2 px-4 text-center">
+        🔥 Welcome to our store. Free shipping over $50. 🔥
+      </div>
+
       <header className="border-b">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
-            <ShoppingCart className="h-5 w-5 text-primary" />
-            <span className="text-lg font-semibold">Universal</span>
-            <span className="text-sm text-muted-foreground">Express Checkout</span>
+            {theme.logoUrl ? (
+              <img src={theme.logoUrl} alt="Store Logo" className="h-8 object-contain" />
+            ) : (
+              <>
+                <ShoppingCart className="h-5 w-5 text-primary" />
+                <span className="text-lg font-semibold">Universal</span>
+                <span className="text-sm text-muted-foreground">Express Checkout</span>
+              </>
+            )}
           </div>
           <ThemeToggle />
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <div className="mb-8">
-          <CheckoutSteps current={section} />
-        </div>
-
         {flowError && (
           <div className="mb-6 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
             {flowError}
@@ -483,46 +598,41 @@ export function CheckoutPage() {
         )}
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_360px]">
-          <section>
-            {section === "cart" && (
-              <div className="space-y-6">
-                <div className="rounded-lg border bg-muted/30 p-4">
-                  <ProcessorPicker
-                    value={processor}
-                    onChange={setProcessor}
-                    disabled={busy}
-                  />
-                </div>
-                <CartStep
-                  cart={cart}
-                  onUpdateQuantity={updateQuantity}
-                  onRemove={removeItem}
-                  onContinue={() => setSection("shipping")}
+          <section className="space-y-8">
+            <div className="space-y-6">
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <ProcessorPicker
+                  value={processor}
+                  onChange={setProcessor}
+                  disabled={busy || paying}
                 />
               </div>
-            )}
-            {section === "shipping" && (
-              <ShippingStep
-                address={address}
-                options={shippingOptions}
-                selectedOptionId={shippingOptionId}
-                currency={currency}
-                busy={busy}
-                onChangeAddress={setAddress}
-                onSelectOption={setShippingOptionId}
-                onBack={() => setSection("cart")}
-                onContinue={handleShippingContinue}
+              <CartStep
+                cart={cart}
+                onUpdateQuantity={updateQuantity}
+                onRemove={removeItem}
               />
-            )}
-            {section === "payment" && (
-              <PaymentStep
-                amount={grandTotal}
-                currency={currency}
-                busy={paying}
-                onBack={() => setSection("shipping")}
-                onPaid={handlePaid}
-              />
-            )}
+            </div>
+
+            <ShippingStep
+              address={address}
+              options={shippingOptions}
+              selectedOptionId={shippingOptionId}
+              currency={currency}
+              busy={busy}
+              onChangeAddress={setAddress}
+              onSelectOption={setShippingOptionId}
+              showValidationErrors={showValidationErrors}
+            />
+
+            <PaymentStep
+              amount={grandTotal}
+              currency={currency}
+              busy={paying}
+              isAddressValid={isAddressValid}
+              onPaid={handlePaid}
+              onInvalidAddress={() => setShowValidationErrors(true)}
+            />
           </section>
 
           <aside>

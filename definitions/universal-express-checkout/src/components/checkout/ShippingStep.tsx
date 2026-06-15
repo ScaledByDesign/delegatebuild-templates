@@ -20,8 +20,7 @@ interface ShippingStepProps {
   busy?: boolean;
   onChangeAddress: (address: ShippingAddress) => void;
   onSelectOption: (id: string) => void;
-  onBack: () => void;
-  onContinue: () => void;
+  showValidationErrors?: boolean;
 }
 
 const FIELDS: { key: keyof ShippingAddress; label: string; span?: boolean }[] = [
@@ -44,10 +43,8 @@ export function ShippingStep({
   busy = false,
   onChangeAddress,
   onSelectOption,
-  onBack,
-  onContinue,
+  showValidationErrors = false,
 }: ShippingStepProps) {
-  const [touched, setTouched] = useState(false);
   const required: (keyof ShippingAddress)[] = [
     "first_name",
     "last_name",
@@ -57,12 +54,6 @@ export function ShippingStep({
     "postal_code",
     "country_code",
   ];
-  const isValid = required.every((k) => (address[k] ?? "").toString().trim().length > 0);
-
-  const handleContinue = () => {
-    setTouched(true);
-    if (isValid) onContinue();
-  };
 
   return (
     <div className="space-y-4">
@@ -71,7 +62,7 @@ export function ShippingStep({
         <CardContent className="grid grid-cols-1 gap-4 py-6 sm:grid-cols-2">
           {FIELDS.map((field) => {
             const value = (address[field.key] ?? "") as string;
-            const showError = touched && required.includes(field.key) && !value.trim();
+            const showError = showValidationErrors && required.includes(field.key) && !value.trim();
             return (
               <div
                 key={field.key}
@@ -119,15 +110,6 @@ export function ShippingStep({
           </RadioGroup>
         </CardContent>
       </Card>
-
-      <div className="flex justify-between">
-        <Button variant="outline" size="lg" onClick={onBack} disabled={busy}>
-          Back to cart
-        </Button>
-        <Button size="lg" onClick={handleContinue} disabled={busy}>
-          {busy ? "Saving…" : "Continue to payment"}
-        </Button>
-      </div>
     </div>
   );
 }
