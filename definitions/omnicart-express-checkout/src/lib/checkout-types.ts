@@ -81,6 +81,7 @@ export const EMPTY_ADDRESS: ShippingAddress = {
  */
 export const DEMO_CART: OmniCart = {
   id: "cart_demo",
+  region_id: "reg_demo",
   currency_code: "usd",
   items: [
     {

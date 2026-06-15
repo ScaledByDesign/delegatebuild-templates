@@ -20,7 +20,7 @@ This template provides a production-ready **OmniCart Express Checkout** storefro
   * Simple static marketing sites with no checkout
 
 * Built with:
-  * **OmniCart commerce client** (the storefront SDK, internally the Medusa framework) for cart, region, shipping and order operations
+  * **OmniCart commerce client** (the storefront SDK, internally the Medusa framework) for cart, region, shipping and order operations, with the **full Medusa v2 cart lifecycle wired into the initial checkout** (`createCart` → `addLineItem`/`updateLineItem`/`removeLineItem` → `updateCartContact` → `listShippingOptions`/`addShippingMethod` → `createPaymentCollection`/`initPaymentSession` → `completeCart`), each with a `503 { demo: true }` fallback
   * **Worker commerce proxy** at `/api/omnicart/*` (storefront) and `/api/upsell/*` (Flow Builder upsell runtime) that injects keys/tokens server-side and keeps secrets off the client
   * **OmniCart Flow Builder client** (`src/lib/upsell-flow.ts`) that walks the merchant's upsell graph node-by-node after payment, with an in-browser demo flow fallback
   * **Coupon / promo-code support** (`applyDiscount`/`removeDiscount` in `src/lib/omnicart.ts`) proxied to the OmniCart **promotions** API (`POST`/`DELETE /api/omnicart/carts/:id/promotions`, body `{ promo_codes: [code] }`), with an in-template demo coupon table fallback

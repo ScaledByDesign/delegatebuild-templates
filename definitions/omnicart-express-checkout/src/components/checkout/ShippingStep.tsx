@@ -16,6 +16,8 @@ interface ShippingStepProps {
   options: ShippingOption[];
   selectedOptionId: string;
   currency: string;
+  /** True while the page is saving the address / loading live shipping options. */
+  busy?: boolean;
   onChangeAddress: (address: ShippingAddress) => void;
   onSelectOption: (id: string) => void;
   onBack: () => void;
@@ -39,6 +41,7 @@ export function ShippingStep({
   options,
   selectedOptionId,
   currency,
+  busy = false,
   onChangeAddress,
   onSelectOption,
   onBack,
@@ -118,11 +121,11 @@ export function ShippingStep({
       </Card>
 
       <div className="flex justify-between">
-        <Button variant="outline" size="lg" onClick={onBack}>
+        <Button variant="outline" size="lg" onClick={onBack} disabled={busy}>
           Back to cart
         </Button>
-        <Button size="lg" onClick={handleContinue}>
-          Continue to payment
+        <Button size="lg" onClick={handleContinue} disabled={busy}>
+          {busy ? "Saving…" : "Continue to payment"}
         </Button>
       </div>
     </div>

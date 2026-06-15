@@ -31,20 +31,29 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // Health/demo route kept from the reference template.
   app.get('/api/test', (c) => c.json({ success: true, data: { name: 'this works' } }));
 
-  // --- OmniCart coupon / promotion codes ------------------------------------
-  // These map 1:1 onto the OmniCart (Medusa v2) store promotions endpoints and
-  // are forwarded by the generic /api/omnicart/* proxy below. In v2 both add and
-  // remove hit the SAME path; the code(s) travel in the request body, not the
-  // path:
-  //   POST   /api/omnicart/carts/:id/promotions   { promo_codes: [code] }
-  //   DELETE /api/omnicart/carts/:id/promotions   { promo_codes: [code] }
-  // The backend re-validates the code and re-prices the cart, so the returned
-  // cart's `promotions[]`, `discount_total` and `total` are authoritative
-  // (anti-tamper). When no backend is configured we short-circuit with a clear
-  // 503 instead of hitting the placeholder demo host, so the client can fall
-  // back to its in-template demo coupons.
-  // Ref: docs.medusajs.com/resources/storefront-development/cart/manage-promotions
-  app.all('/api/omnicart/carts/:id/promotions', async (c, next) => {
+  // --- OmniCart demo-mode guard ---------------------------------------------
+  // When no OmniCart backend is configured, short-circuit the ENTIRE storefront
+  // surface with a clear `503 { demo: true }` signal instead of forwarding to
+  // the placeholder demo host. This covers the full Medusa v2 cart lifecycle
+  // used by the express checkout:
+  //   POST   /api/omnicart/carts                                  (create cart)
+  //   GET    /api/omnicart/carts/:id                              (retrieve)
+  //   POST   /api/omnicart/carts/:id                              (email/address)
+  //   POST   /api/omnicart/carts/:id/line-items                   (add item)
+  //   POST   /api/omnicart/carts/:id/line-items/:line_id          (update qty)
+  //   DELETE /api/omnicart/carts/:id/line-items/:line_id          (remove item)
+  //   GET    /api/omnicart/shipping-options?cart_id=:id           (list options)
+  //   POST   /api/omnicart/carts/:id/shipping-methods             (set method)
+  //   GET    /api/omnicart/payment-providers?region_id=:rid       (list providers)
+  //   POST   /api/omnicart/payment-collections                    (create pc)
+  //   POST   /api/omnicart/payment-collections/:id/payment-sessions (init session)
+  //   POST   /api/omnicart/carts/:id/complete                     (place order)
+  //   POST | DELETE /api/omnicart/carts/:id/promotions            (coupon codes)
+  // Each OmniCart client decodes this `503 { demo: true }` and falls back to
+  // its in-template demo behavior, so the checkout works out of the box.
+  // Refs: docs.medusajs.com/resources/storefront-development/guides/express-checkout
+  //       docs.medusajs.com/resources/storefront-development/cart/manage-promotions
+  app.all('/api/omnicart/*', async (c, next) => {
     const env = c.env as OmniCartEnv;
     if (!env.OMNICART_BACKEND_URL) {
       return c.json(

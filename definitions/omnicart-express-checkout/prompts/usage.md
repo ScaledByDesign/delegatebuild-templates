@@ -19,6 +19,41 @@ await omnicart.carts.lineItems.create(cart.id, { variant_id, quantity: 1 });
 
 `formatAmount(amount, currencyCode)` formats minor-unit amounts (cents) into a localized currency string for display.
 
+### Cart lifecycle (initial checkout)
+
+The initial checkout (cart → shipping → payment) is wired to the full **OmniCart (Medusa v2) cart lifecycle** via typed helpers in `src/lib/omnicart.ts`. Every helper returns a `BackendResult<T>` (`{ ok, data?, demo?, error? }`) — when no backend is configured the Worker proxy returns `503 { demo: true }`, the helper reports `demo: true`, and `CheckoutPage` keeps its self-contained demo state. **Never** call the backend directly; always go through these helpers so the publishable key + backend URL stay server-side.
+
+```ts
+import {
+  createCart, addLineItem, updateLineItem, removeLineItem,
+  updateCartContact, listShippingOptions, addShippingMethod,
+  listPaymentProviders, createPaymentCollection, initPaymentSession, completeCart,
+} from "@/lib/omnicart";
+
+const created = await createCart(region_id);            // POST /carts { region_id }
+if (!created.demo && created.ok) {
+  let cart = created.data!;
+  const added = await addLineItem(cart.id, variant_id, 1); // POST /carts/:id/line-items
+  if (added.ok) cart = added.data!;
+  await updateLineItem(cart.id, line_id, 2);               // POST /carts/:id/line-items/:line_id
+  await removeLineItem(cart.id, line_id);                  // DELETE /carts/:id/line-items/:line_id (cart under `parent`)
+  await updateCartContact(cart.id, { email, shipping_address }); // POST /carts/:id
+  const opts = await listShippingOptions(cart.id);        // GET /shipping-options?cart_id=:id
+  await addShippingMethod(cart.id, opts.data![0].id);     // POST /carts/:id/shipping-methods
+  const pc = await createPaymentCollection(cart.id);      // POST /payment-collections { cart_id }
+  await initPaymentSession(pc.data!.id, provider_id);     // POST /payment-collections/:id/payment-sessions
+  const order = await completeCart(cart.id);              // POST /carts/:id/complete -> { type:"order", order }
+}
+```
+
+`CheckoutPage.tsx` orchestrates this end-to-end:
+* **On mount** it calls `createCart(region_id)` and seeds the cart with the demo line items via `addLineItem`. If the backend isn't wired (`demo: true`) it stays on the in-template `DEMO_CART`. A `liveCart` flag tracks which mode is active.
+* **Cart edits** (`updateQuantity`/`removeItem`) call `updateLineItem`/`removeLineItem` when live (the repriced cart is authoritative) and edit local state in demo mode.
+* **Shipping continue** calls `updateCartContact` (email + address), `listShippingOptions` (real options replace the demo set in `shippingOptions` state), then `addShippingMethod` for the selection.
+* **Payment capture** (`handlePaid`) lists providers, creates the payment collection, initializes the session, then `completeCart`. On `{ type: "order" }` it adopts the real order; otherwise it surfaces the cart-level error. In demo mode it synthesizes a demo order so the upsell + confirmation still run.
+
+Each v2 endpoint shape comes from the official [Express Checkout guide](https://docs.medusajs.com/resources/storefront-development/guides/express-checkout). Address fields use `country_code` lowercased (e.g. `us`). The demo fallback is intentional — keep it so the generated checkout works out of the box.
+
 ### Coupon / promo codes
 
 Apply and remove promotion (coupon) codes with the helpers in `src/lib/omnicart.ts`:
@@ -37,7 +72,7 @@ These proxy to the OmniCart backend's **promotions** API (`POST`/`DELETE /api/om
 
 ## Worker API (`worker/userRoutes.ts`)
 
-* `/api/omnicart/*` — proxies the OmniCart storefront API to the configured backend, attaching `x-publishable-api-key` server-side. **Use it without modification** for all storefront calls. This includes promotion (coupon) codes: `POST /api/omnicart/carts/:id/promotions` and `DELETE /api/omnicart/carts/:id/promotions`, both with body `{ promo_codes: [code] }` (Medusa v2 — same path for add/remove, code in the body array). When no backend is configured these short-circuit with `503 { demo: true }` so the client can use its demo coupon table.
+* `/api/omnicart/*` — proxies the OmniCart storefront API to the configured backend, attaching `x-publishable-api-key` server-side. **Use it without modification** for all storefront calls. This covers the full Medusa v2 cart lifecycle (`carts`, `line-items`, `shipping-options`, `shipping-methods`, `payment-providers`, `payment-collections`, `complete`) plus promotion (coupon) codes (`POST`/`DELETE /api/omnicart/carts/:id/promotions`, body `{ promo_codes: [code] }`). A single demo-mode guard short-circuits **every** `/api/omnicart/*` path with `503 { demo: true }` when no backend is configured, so the client falls back to its in-template demo behavior across the entire checkout.
 * `/api/upsell/session` (POST) — initializes a post-purchase upsell session for a paid order via the OmniCart **Flow Builder** runtime; returns `{ session, entry_node }`.
 * `/api/upsell/click` (GET) — accepts/declines the current offer node and walks the flow graph; on accept it charges the saved payment method (one-click). Returns the next node or a terminal result. **Use without modification.**
 * `/api/omnicart-config` — returns browser-safe config (the Stripe publishable key + whether the backend/upsell runtime are configured) for initializing Stripe Elements and choosing live-vs-demo upsells. Fetch this on the payment step.
