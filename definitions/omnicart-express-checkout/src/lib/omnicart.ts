@@ -30,15 +30,24 @@ export interface OmniCartLineItem {
 }
 
 /**
- * An applied discount/coupon code on the cart. OmniCart (Medusa) returns a
- * `discounts` array; we surface the slice the UI needs to render a removable
- * "Discount" row. `amount` is the resolved minor-unit value off this cart.
+ * An applied promotion (coupon/promo code) on the cart. This mirrors the
+ * OmniCart (Medusa v2) `StoreCartPromotion` shape returned in the cart's
+ * `promotions` array. The per-promotion discount amount is NOT on this object
+ * in v2 — the cart-level `discount_total` is the source of truth for how much
+ * was discounted. `application_method` describes how the promotion applies
+ * (`fixed`/`percentage`, target `items`/`shipping_methods`/`order`).
  */
-export interface OmniCartDiscount {
+export interface OmniCartPromotion {
   id: string;
-  code: string;
-  amount: number; // minor units (e.g. cents) discounted on this cart
-  is_dynamic?: boolean;
+  code?: string;
+  /** True when applied automatically (no code entered by the customer). */
+  is_automatic?: boolean;
+  application_method?: {
+    type?: "fixed" | "percentage";
+    target_type?: "items" | "shipping_methods" | "order";
+    value?: number;
+    currency_code?: string;
+  } | null;
 }
 
 export interface OmniCart {
@@ -47,13 +56,15 @@ export interface OmniCart {
   region_id?: string;
   currency_code?: string;
   items: OmniCartLineItem[];
-  subtotal?: number;
-  shipping_total?: number;
-  tax_total?: number;
-  discount_total?: number;
-  /** Applied coupon/promo codes (empty when none). */
-  discounts?: OmniCartDiscount[];
-  total?: number;
+  // OmniCart (Medusa v2) cart totals (minor units). See:
+  // docs.medusajs.com/resources/storefront-development/cart/totals
+  subtotal?: number; // before discounts, excluding taxes
+  shipping_total?: number; // shipping after discounts, incl. taxes
+  tax_total?: number; // tax after discounts
+  discount_total?: number; // total discounts applied (incl. tax portion)
+  total?: number; // final total after discounts + taxes
+  /** Applied promotions/coupon codes (empty when none). */
+  promotions?: OmniCartPromotion[];
   shipping_address?: Record<string, unknown> | null;
   payment_session?: { provider_id: string; data: Record<string, unknown> } | null;
 }
@@ -66,7 +77,7 @@ export function formatAmount(amount = 0, currencyCode = "usd"): string {
   }).format(amount / 100);
 }
 
-/** Result of applying/removing a coupon code to a cart. */
+/** Result of applying/removing a promotion (coupon) code to a cart. */
 export interface DiscountResult {
   ok: boolean;
   /** The updated cart (when the backend is wired). */
@@ -76,17 +87,24 @@ export interface DiscountResult {
 }
 
 /**
- * Apply a coupon/promo code to a cart via the Worker proxy
- * (`POST /api/omnicart/carts/:id/discounts`), which forwards to the OmniCart
- * (Medusa) backend. The backend re-validates and re-prices the cart, so the
- * returned cart's `discount_total`/`total` are authoritative.
+ * Apply a coupon/promo code to a cart using the OmniCart (Medusa v2) promotions
+ * API, via the Worker proxy:
+ *
+ *   POST /api/omnicart/carts/:id/promotions   body: { promo_codes: [code] }
+ *
+ * The proxy forwards to `${OMNICART_BACKEND_URL}/store/carts/:id/promotions`
+ * with the publishable key attached server-side. The backend re-validates the
+ * code and re-prices the cart, so the returned cart's `promotions[]` and
+ * `discount_total`/`total` are authoritative (anti-tamper).
+ *
+ * Ref: docs.medusajs.com/resources/storefront-development/cart/manage-promotions
  */
 export async function applyDiscount(cartId: string, code: string): Promise<DiscountResult> {
   try {
-    const res = await fetch(`/api/omnicart/carts/${encodeURIComponent(cartId)}/discounts`, {
+    const res = await fetch(`/api/omnicart/carts/${encodeURIComponent(cartId)}/promotions`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ promo_codes: [code] }),
     });
     const json = (await res.json().catch(() => ({}))) as {
       cart?: OmniCart;
@@ -103,18 +121,25 @@ export async function applyDiscount(cartId: string, code: string): Promise<Disco
 }
 
 /**
- * Remove a previously applied coupon code via the Worker proxy
- * (`DELETE /api/omnicart/carts/:id/discounts/:code`).
+ * Remove a previously applied promotion (coupon) code. In Medusa v2 the code is
+ * passed in the request body (an array), NOT as a path parameter:
+ *
+ *   DELETE /api/omnicart/carts/:id/promotions   body: { promo_codes: [code] }
  */
 export async function removeDiscount(cartId: string, code: string): Promise<DiscountResult> {
   try {
-    const res = await fetch(
-      `/api/omnicart/carts/${encodeURIComponent(cartId)}/discounts/${encodeURIComponent(code)}`,
-      { method: "DELETE" },
-    );
-    const json = (await res.json().catch(() => ({}))) as { cart?: OmniCart; error?: string };
+    const res = await fetch(`/api/omnicart/carts/${encodeURIComponent(cartId)}/promotions`, {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ promo_codes: [code] }),
+    });
+    const json = (await res.json().catch(() => ({}))) as {
+      cart?: OmniCart;
+      message?: string;
+      error?: string;
+    };
     if (!res.ok) {
-      return { ok: false, error: json.error || "Could not remove code." };
+      return { ok: false, error: json.message || json.error || "Could not remove code." };
     }
     return { ok: true, cart: json.cart };
   } catch (e) {

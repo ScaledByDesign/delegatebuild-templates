@@ -12,7 +12,7 @@ import {
   applyDiscount,
   removeDiscount,
   type OmniCart,
-  type OmniCartDiscount,
+  type OmniCartPromotion,
 } from "@/lib/omnicart";
 import {
   DEMO_CART,
@@ -54,9 +54,18 @@ const SHIPPING_OPTIONS: ShippingOption[] = [
 export function CheckoutPage() {
   const [step, setStep] = useState<CheckoutStepId>("cart");
   const [cart, setCart] = useState<OmniCart>(DEMO_CART);
-  // Applied coupon codes (mirrors cart.discounts; kept in page state so the
-  // demo fallback can re-resolve discount amounts as quantities change).
-  const [discounts, setDiscounts] = useState<OmniCartDiscount[]>([]);
+  // Applied promotions (mirrors the OmniCart v2 `cart.promotions` array). In v2
+  // a promotion carries no per-promotion amount, so the cart-level
+  // `discount_total` is authoritative once a backend is wired.
+  const [promotions, setPromotions] = useState<OmniCartPromotion[]>([]);
+  // Demo-only: code → minor-unit amount, so the in-template demo fallback can
+  // still compute a discount total (and re-resolve it as quantities change)
+  // even though v2 promotions don't expose a per-promotion amount. Ignored
+  // once a live backend supplies `cart.discount_total`.
+  const [demoDiscounts, setDemoDiscounts] = useState<Record<string, number>>({});
+  // True once a wired backend has returned an authoritative repriced cart; in
+  // that mode we trust `cart.discount_total` instead of the demo amounts.
+  const [backendPricing, setBackendPricing] = useState(false);
   const [address, setAddress] = useState<ShippingAddress>(EMPTY_ADDRESS);
   const [shippingOptionId, setShippingOptionId] = useState<string>(SHIPPING_OPTIONS[0].id);
   const [order, setOrder] = useState<OrderSummaryData | null>(null);
@@ -96,10 +105,13 @@ export function CheckoutPage() {
     () => cart.tax_total ?? Math.round(subtotalAmount * 0.08),
     [cart.tax_total, subtotalAmount],
   );
-  const discountAmount = useMemo(
-    () => Math.min(subtotalAmount, discounts.reduce((sum, d) => sum + d.amount, 0)),
-    [discounts, subtotalAmount],
-  );
+  const discountAmount = useMemo(() => {
+    // Backend mode: the repriced cart's `discount_total` is the source of truth.
+    if (backendPricing) return cart.discount_total ?? 0;
+    // Demo mode: sum the locally-resolved coupon amounts, capped at subtotal.
+    const demoTotal = Object.values(demoDiscounts).reduce((sum, a) => sum + a, 0);
+    return Math.min(subtotalAmount, demoTotal);
+  }, [backendPricing, cart.discount_total, demoDiscounts, subtotalAmount]);
 
   const grandTotal = useMemo(
     () => Math.max(0, subtotalAmount + shippingAmount + taxAmount - discountAmount),
@@ -113,20 +125,24 @@ export function CheckoutPage() {
   // failure (consumed by OrderSummary), or null on success.
   const handleApplyCoupon = async (raw: string): Promise<string | null> => {
     const code = raw.trim().toUpperCase();
-    if (discounts.some((d) => d.code === code)) return "That code is already applied.";
+    if (promotions.some((p) => p.code === code)) return "That code is already applied.";
 
     const result = await applyDiscount(cart.id, code);
     if (result.ok && result.cart) {
-      // Backend is the source of truth: adopt its cart + discounts.
+      // Backend is the source of truth: adopt its repriced cart + promotions
+      // and trust its `discount_total` from here on.
       setCart(result.cart);
-      setDiscounts(result.cart.discounts ?? []);
+      setPromotions(result.cart.promotions ?? []);
+      setBackendPricing(true);
       return null;
     }
 
-    // Demo fallback (no backend wired).
+    // Demo fallback (no backend wired): synthesize a promotion entry and track
+    // its resolved amount locally so the totals still add up.
     const amount = resolveDemoCoupon(code, subtotalAmount);
     if (amount === null || amount <= 0) return "That code isn’t valid.";
-    setDiscounts((prev) => [...prev, { id: code, code, amount }]);
+    setPromotions((prev) => [...prev, { id: code, code }]);
+    setDemoDiscounts((prev) => ({ ...prev, [code]: amount }));
     return null;
   };
 
@@ -134,10 +150,16 @@ export function CheckoutPage() {
     const result = await removeDiscount(cart.id, code);
     if (result.ok && result.cart) {
       setCart(result.cart);
-      setDiscounts(result.cart.discounts ?? []);
+      setPromotions(result.cart.promotions ?? []);
+      setBackendPricing(true);
       return;
     }
-    setDiscounts((prev) => prev.filter((d) => d.code !== code));
+    setPromotions((prev) => prev.filter((p) => p.code !== code));
+    setDemoDiscounts((prev) => {
+      const next = { ...prev };
+      delete next[code];
+      return next;
+    });
   };
 
   // Advance to confirmation, reconciling the order total + line items with the
@@ -186,7 +208,7 @@ export function CheckoutPage() {
       total: grandTotal,
       currency_code: currency,
       items: cart.items,
-      discounts,
+      promotions,
     };
     setOrder(baseOrder);
 
@@ -230,7 +252,9 @@ export function CheckoutPage() {
 
   const startOver = () => {
     setCart(DEMO_CART);
-    setDiscounts([]);
+    setPromotions([]);
+    setDemoDiscounts({});
+    setBackendPricing(false);
     setAddress(EMPTY_ADDRESS);
     setShippingOptionId(SHIPPING_OPTIONS[0].id);
     setOrder(null);
@@ -248,9 +272,9 @@ export function CheckoutPage() {
       shipping_total: shippingAmount,
       tax_total: taxAmount,
       discount_total: discountAmount,
-      discounts,
+      promotions,
     }),
-    [cart, subtotalAmount, shippingAmount, taxAmount, discountAmount, discounts],
+    [cart, subtotalAmount, shippingAmount, taxAmount, discountAmount, promotions],
   );
 
   return (

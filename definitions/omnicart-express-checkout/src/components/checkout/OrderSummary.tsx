@@ -31,7 +31,7 @@ export function OrderSummary({
   const shipping = shippingAmount ?? cart.shipping_total ?? 0;
   const tax = cart.tax_total ?? 0;
   const discount = cart.discount_total ?? 0;
-  const discounts = cart.discounts ?? [];
+  const promotions = cart.promotions ?? [];
   // Total never goes below zero even if a discount exceeds subtotal+tax+ship.
   const total = Math.max(0, subtotal + shipping + tax - discount);
 
@@ -88,32 +88,38 @@ export function OrderSummary({
         {/* Coupon / promo code */}
         {onApplyCoupon && (
           <div className="space-y-2">
-            {discounts.length > 0 && (
+            {/*
+             * Applied promotions. In OmniCart (Medusa v2) a StoreCartPromotion
+             * carries no per-promotion amount — the cart-level `discount_total`
+             * (shown in the Discount row below) is the source of truth. So we
+             * list the applied code(s) with a remove control and let the
+             * Discount row report the aggregate savings.
+             */}
+            {promotions.length > 0 && (
               <ul className="space-y-1.5">
-                {discounts.map((d) => (
-                  <li
-                    key={d.id || d.code}
-                    className="flex items-center justify-between rounded-md bg-muted/60 px-2.5 py-1.5 text-sm"
-                  >
-                    <span className="flex items-center gap-1.5 font-medium">
-                      <Tag className="h-3.5 w-3.5 text-primary" />
-                      {d.code}
-                    </span>
-                    <span className="flex items-center gap-2 text-muted-foreground">
-                      −{formatAmount(d.amount, currency)}
-                      {onRemoveCoupon && (
+                {promotions
+                  .filter((p) => !p.is_automatic && p.code)
+                  .map((p) => (
+                    <li
+                      key={p.id || p.code}
+                      className="flex items-center justify-between rounded-md bg-muted/60 px-2.5 py-1.5 text-sm"
+                    >
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <Tag className="h-3.5 w-3.5 text-primary" />
+                        {p.code}
+                      </span>
+                      {onRemoveCoupon && p.code && (
                         <button
                           type="button"
-                          onClick={() => onRemoveCoupon(d.code)}
+                          onClick={() => onRemoveCoupon(p.code as string)}
                           className="text-muted-foreground hover:text-destructive"
-                          aria-label={`Remove ${d.code}`}
+                          aria-label={`Remove ${p.code}`}
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       )}
-                    </span>
-                  </li>
-                ))}
+                    </li>
+                  ))}
               </ul>
             )}
             <div className="flex items-center gap-2">

@@ -57,9 +57,14 @@ export function ConfirmationStep({ order, onStartOver }: ConfirmationStepProps) 
                 <span className="flex items-center gap-1.5">
                   <Tag className="h-3.5 w-3.5" />
                   Discount
-                  {order.discounts.length > 0 && (
+                  {order.promotions.some((p) => p.code) && (
                     <span className="text-xs text-muted-foreground">
-                      ({order.discounts.map((d) => d.code).join(", ")})
+                      (
+                      {order.promotions
+                        .filter((p) => p.code)
+                        .map((p) => p.code)
+                        .join(", ")}
+                      )
                     </span>
                   )}
                 </span>

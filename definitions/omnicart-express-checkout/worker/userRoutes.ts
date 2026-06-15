@@ -31,26 +31,20 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // Health/demo route kept from the reference template.
   app.get('/api/test', (c) => c.json({ success: true, data: { name: 'this works' } }));
 
-  // --- OmniCart coupon / discount codes -------------------------------------
-  // These map 1:1 onto the OmniCart (Medusa) store discount endpoints and are
-  // forwarded by the generic /api/omnicart/* proxy below:
-  //   POST   /api/omnicart/carts/:id/discounts          { code }
-  //   DELETE /api/omnicart/carts/:id/discounts/:code
+  // --- OmniCart coupon / promotion codes ------------------------------------
+  // These map 1:1 onto the OmniCart (Medusa v2) store promotions endpoints and
+  // are forwarded by the generic /api/omnicart/* proxy below. In v2 both add and
+  // remove hit the SAME path; the code(s) travel in the request body, not the
+  // path:
+  //   POST   /api/omnicart/carts/:id/promotions   { promo_codes: [code] }
+  //   DELETE /api/omnicart/carts/:id/promotions   { promo_codes: [code] }
   // The backend re-validates the code and re-prices the cart, so the returned
-  // cart's discount_total / total are authoritative (anti-tamper). When no
-  // backend is configured we short-circuit with a clear 503 instead of hitting
-  // the placeholder demo host, so the client can fall back to its demo coupons.
-  app.all('/api/omnicart/carts/:id/discounts', async (c, next) => {
-    const env = c.env as OmniCartEnv;
-    if (!env.OMNICART_BACKEND_URL) {
-      return c.json(
-        { success: false, error: 'OmniCart backend not configured', demo: true },
-        503,
-      );
-    }
-    return next();
-  });
-  app.all('/api/omnicart/carts/:id/discounts/:code', async (c, next) => {
+  // cart's `promotions[]`, `discount_total` and `total` are authoritative
+  // (anti-tamper). When no backend is configured we short-circuit with a clear
+  // 503 instead of hitting the placeholder demo host, so the client can fall
+  // back to its in-template demo coupons.
+  // Ref: docs.medusajs.com/resources/storefront-development/cart/manage-promotions
+  app.all('/api/omnicart/carts/:id/promotions', async (c, next) => {
     const env = c.env as OmniCartEnv;
     if (!env.OMNICART_BACKEND_URL) {
       return c.json(

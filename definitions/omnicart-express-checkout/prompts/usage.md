@@ -21,7 +21,7 @@ await omnicart.carts.lineItems.create(cart.id, { variant_id, quantity: 1 });
 
 ### Coupon / promo codes
 
-Apply and remove discount codes with the helpers in `src/lib/omnicart.ts`:
+Apply and remove promotion (coupon) codes with the helpers in `src/lib/omnicart.ts`:
 
 ```ts
 import { applyDiscount, removeDiscount } from "@/lib/omnicart";
@@ -33,11 +33,11 @@ else showError(res.error);               // e.g. invalid/expired code
 await removeDiscount(cart.id, "SAVE10");
 ```
 
-These proxy to the OmniCart backend (`POST`/`DELETE /api/omnicart/carts/:id/discounts`). The backend re-validates the code and re-prices the cart, so the returned `discount_total` / `total` are authoritative (anti-tamper). When no backend is configured, the call returns a `503 { demo: true }` signal and `CheckoutPage` falls back to the in-template `DEMO_COUPONS` table (`SAVE10`, `WELCOME15`, `FLAT5`) so the field is interactive out of the box. The `OrderSummary` card renders the promo-code input, applied codes (removable), and a **Discount** row; replace the demo table by wiring a live backend.
+These proxy to the OmniCart backend's **promotions** API (`POST`/`DELETE /api/omnicart/carts/:id/promotions`, body `{ promo_codes: [code] }`). In OmniCart (Medusa v2) both add and remove use the **same path** and the code travels in the request body, not the URL. The backend re-validates the code and re-prices the cart, so the returned `cart.promotions[]`, `discount_total` and `total` are authoritative (anti-tamper). Note: a v2 promotion carries **no per-promotion amount** — the cart-level `discount_total` is the source of truth for total savings. When no backend is configured, the call returns a `503 { demo: true }` signal and `CheckoutPage` falls back to the in-template `DEMO_COUPONS` table (`SAVE10`, `WELCOME15`, `FLAT5`) so the field is interactive out of the box. The `OrderSummary` card renders the promo-code input, applied codes (removable), and a **Discount** row driven by `discount_total`; replace the demo table by wiring a live backend. Ref: [Manage Cart Promotions](https://docs.medusajs.com/resources/storefront-development/cart/manage-promotions).
 
 ## Worker API (`worker/userRoutes.ts`)
 
-* `/api/omnicart/*` — proxies the OmniCart storefront API to the configured backend, attaching `x-publishable-api-key` server-side. **Use it without modification** for all storefront calls. This includes coupon codes: `POST /api/omnicart/carts/:id/discounts` (`{ code }`) and `DELETE /api/omnicart/carts/:id/discounts/:code`. When no backend is configured these short-circuit with `503 { demo: true }` so the client can use its demo coupon table.
+* `/api/omnicart/*` — proxies the OmniCart storefront API to the configured backend, attaching `x-publishable-api-key` server-side. **Use it without modification** for all storefront calls. This includes promotion (coupon) codes: `POST /api/omnicart/carts/:id/promotions` and `DELETE /api/omnicart/carts/:id/promotions`, both with body `{ promo_codes: [code] }` (Medusa v2 — same path for add/remove, code in the body array). When no backend is configured these short-circuit with `503 { demo: true }` so the client can use its demo coupon table.
 * `/api/upsell/session` (POST) — initializes a post-purchase upsell session for a paid order via the OmniCart **Flow Builder** runtime; returns `{ session, entry_node }`.
 * `/api/upsell/click` (GET) — accepts/declines the current offer node and walks the flow graph; on accept it charges the saved payment method (one-click). Returns the next node or a terminal result. **Use without modification.**
 * `/api/omnicart-config` — returns browser-safe config (the Stripe publishable key + whether the backend/upsell runtime are configured) for initializing Stripe Elements and choosing live-vs-demo upsells. Fetch this on the payment step.
@@ -61,7 +61,7 @@ The single-page checkout advances through these steps. Keep them as components u
 2. **Shipping** (`ShippingStep.tsx`) — address form + shipping option selection.
 3. **Payment** (`PaymentStep.tsx`) — Stripe Elements card form; creates the payment session and completes the cart.
 4. **Upsell** (`UpsellStep.tsx`) — **Flow Builder driven post-purchase upsell sequence** shown after payment is captured. Renders the *current* flow node (offer); accepting charges the *same* saved payment method (no re-entering card details) and walks the success branch, declining walks the decline branch. The page loops through multiple offers until a terminal node, then proceeds to confirmation.
-5. **Confirmation** (`ConfirmationStep.tsx`) — an **itemized receipt** after a successful purchase: every line item (including **every** accepted upsell from the flow journey) plus a totals breakdown — subtotal, discounts (with applied code labels), shipping, tax, and **total paid**. The `OrderSummary` confirmation object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `discounts[]`.
+5. **Confirmation** (`ConfirmationStep.tsx`) — an **itemized receipt** after a successful purchase: every line item (including **every** accepted upsell from the flow journey) plus a totals breakdown — subtotal, discounts (with applied code labels from the promotions list), shipping, tax, and **total paid**. The `OrderSummary` confirmation object carries `subtotal`, `shipping_total`, `tax_total`, `discount_total`, `total`, and `promotions[]` (each with `code`; the discount amount comes from `discount_total`).
 
 A step indicator (`CheckoutSteps.tsx`) shows progress for the core cart → shipping → payment → done steps. The upsell is intentionally not a visible progress step — the offer sequence appears as bonus offers between payment capture and confirmation. `CheckoutPage.tsx` owns the cart/order state, the upsell flow session, and the current step.
 

@@ -4,7 +4,7 @@
  * OmniCart is the whitelabel commerce brand (powered internally by the Medusa
  * framework). These types model the slice of checkout state the UI owns.
  */
-import type { OmniCart, OmniCartDiscount, OmniCartLineItem } from "@/lib/omnicart";
+import type { OmniCart, OmniCartPromotion, OmniCartLineItem } from "@/lib/omnicart";
 
 export type CheckoutStepId =
   | "cart"
@@ -58,8 +58,8 @@ export interface OrderSummary {
   total: number;
   currency_code: string;
   items: OmniCartLineItem[];
-  /** Coupon codes applied to the order (empty when none). */
-  discounts: OmniCartDiscount[];
+  /** Promotions/coupon codes applied to the order (empty when none). */
+  promotions: OmniCartPromotion[];
 }
 
 export const EMPTY_ADDRESS: ShippingAddress = {
@@ -104,7 +104,7 @@ export const DEMO_CART: OmniCart = {
   shipping_total: 0,
   tax_total: 544,
   discount_total: 0,
-  discounts: [],
+  promotions: [],
   total: 7344,
 };
 
