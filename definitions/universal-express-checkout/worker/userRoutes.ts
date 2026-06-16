@@ -534,6 +534,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     };
 
     let theme = defaultTheme;
+    let config: any = null;
 
     if (backendConfigured && runtimeUrl && code !== 'demo') {
       try {
@@ -559,6 +560,9 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
               statementName: resBody.theme.statementName || defaultTheme.statementName,
             };
           }
+          if (resBody.success && resBody.config) {
+            config = resBody.config;
+          }
         }
       } catch (err) {
         console.error("Failed to fetch checkout theme", err);
@@ -573,6 +577,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         // Builder runtime or fall back to the in-browser demo flow.
         backendConfigured,
         theme,
+        config,
       },
     });
   });

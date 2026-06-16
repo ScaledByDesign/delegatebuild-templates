@@ -87,6 +87,95 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
  * `demo` branch, and the page stays in self-contained demo mode so the template
  * renders a realistic flow out of the box for every processor.
  */
+function resolveItemsFromConfig(config: any): any[] {
+  if (!config || !Array.isArray(config.sections)) return [];
+
+  for (const s of config.sections) {
+    if (s.kind === "bundle" && Array.isArray(s.packages) && s.packages.length > 0) {
+      const pkg = s.packages.find((p: any) => p.id === s.defaultPackageId) || s.packages[0];
+      if (pkg && Array.isArray(pkg.products)) {
+        return pkg.products.map((p: any, idx: number) => {
+          let unitPrice = p.priceOverrideCents ?? p.priceCents ?? 0;
+          let variantTitle = p.label;
+          let variantId = p.priceId || p.id;
+          if (Array.isArray(p.combinations) && p.combinations.length > 0) {
+            const combo = p.combinations.find((c: any) => c.id === p.defaultCombinationId) || p.combinations[0];
+            if (combo) {
+              unitPrice = combo.priceOverrideCents ?? combo.priceCents ?? unitPrice;
+              variantId = combo.priceId || combo.id;
+              variantTitle = `${p.label} (${Object.values(combo.optionValueIds).join(" / ")})`;
+            }
+          }
+          return {
+            id: `item_bundle_${p.id}_${idx}`,
+            title: p.label,
+            quantity: p.quantity || 1,
+            unit_price: unitPrice,
+            thumbnail: p.imageUrl || null,
+            variant: { id: variantId, title: variantTitle },
+          };
+        });
+      }
+    }
+
+    if (s.kind === "multi_product" && Array.isArray(s.options) && s.options.length > 0) {
+      const opt = s.options.find((o: any) => o.id === s.defaultOptionId) || s.options[0];
+      if (opt) {
+        let unitPrice = opt.priceCents ?? 0;
+        let variantTitle = opt.label;
+        let variantId = opt.priceId || opt.id;
+        if (Array.isArray(opt.combinations) && opt.combinations.length > 0) {
+          const combo = opt.combinations.find((c: any) => c.id === opt.defaultCombinationId) || opt.combinations[0];
+          if (combo) {
+            unitPrice = combo.priceOverrideCents ?? combo.priceCents ?? unitPrice;
+            variantId = combo.priceId || combo.id;
+            variantTitle = `${opt.label} (${Object.values(combo.optionValueIds).join(" / ")})`;
+          }
+        }
+        return [{
+          id: `item_multi_${opt.id}`,
+          title: opt.label,
+          quantity: 1,
+          unit_price: unitPrice,
+          thumbnail: opt.imageUrl || null,
+          variant: { id: variantId, title: variantTitle },
+        }];
+      }
+    }
+
+    if (s.kind === "product_variations" && Array.isArray(s.combinations) && s.combinations.length > 0) {
+      const combo = s.combinations.find((c: any) => c.id === s.defaultCombinationId) || s.combinations[0];
+      if (combo) {
+        const title = Object.values(combo.optionValueIds).join(" / ");
+        return [{
+          id: `item_var_${combo.id}`,
+          title: s.productName || "Product",
+          quantity: 1,
+          unit_price: combo.priceOverrideCents ?? combo.priceCents ?? 0,
+          thumbnail: combo.imageUrl || null,
+          variant: { id: combo.priceId || combo.id, title },
+        }];
+      }
+    }
+
+    if (s.kind === "quantity_selector" && Array.isArray(s.variants) && s.variants.length > 0) {
+      const variant = s.variants[0];
+      if (variant) {
+        return [{
+          id: `item_qty_${variant.quantity}`,
+          title: s.productName || "Product",
+          quantity: variant.quantity,
+          unit_price: variant.oneTimePrice,
+          thumbnail: variant.imageUrl || null,
+          variant: { id: variant.metadata?.priceId || `var_${variant.quantity}`, title: variant.label },
+        }];
+      }
+    }
+  }
+
+  return [];
+}
+
 export function CheckoutPage() {
   // The checkout short code from the route. Mirrors `params.code` in
   // upw-sendpaylinks' `/c/[code]`; a live build resolves the order payload
@@ -151,36 +240,93 @@ export function CheckoutPage() {
   });
 
   // -- Lifecycle bootstrap ----------------------------------------------------
-  // On mount, try to create a real OmniCart cart and seed it with the demo
-  // cart's variants. If no backend is wired (demo signal) or the call fails,
-  // we stay in demo mode with local cart state.
+  // On mount, try to load the checkout configuration and theme, and then
+  // create the cart, seeding it dynamically with the resolved products.
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+
+    async function init() {
+      let stripePubKey = stripePublishableKey;
+      let resolvedConfig: any = null;
+
+      try {
+        const res = await fetch(`/api/omnicart-config?code=${encodeURIComponent(code)}`);
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg.success && cfg.data) {
+            if (cfg.data.theme && !cancelled) {
+              setTheme(cfg.data.theme);
+            }
+            if (cfg.data.stripePublishableKey && !cancelled) {
+              stripePubKey = cfg.data.stripePublishableKey;
+              setStripePublishableKey(cfg.data.stripePublishableKey);
+            }
+            if (cfg.data.config) {
+              resolvedConfig = cfg.data.config;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load config theme/config", err);
+      }
+
+      if (cancelled) return;
+
+      // Seed dynamically from config or fall back to DEMO_CART
+      let itemsToSeed = DEMO_CART.items;
+      if (resolvedConfig && resolvedConfig.sections) {
+        const parsedItems = resolveItemsFromConfig(resolvedConfig);
+        if (parsedItems.length > 0) {
+          itemsToSeed = parsedItems;
+        }
+      }
+
+      const initialSubtotal = itemsToSeed.reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+      const initialTax = Math.round(initialSubtotal * 0.08);
+      const initialTotal = initialSubtotal + initialTax;
+
+      const baseCartState: OmniCart = {
+        ...DEMO_CART,
+        items: itemsToSeed,
+        subtotal: initialSubtotal,
+        tax_total: initialTax,
+        total: initialTotal,
+      };
+
+      if (!cancelled) {
+        setCart(baseCartState);
+      }
+
+      // Try to bootstrap live cart if backend is wired
       const created = await createCart(DEMO_CART.region_id);
       if (cancelled) return;
       if (created.demo || !created.ok || !created.data) {
-        // No backend wired (or unreachable): keep the self-contained demo cart.
+        // No backend wired: keep baseCartState in local demo mode.
         return;
       }
-      // Seed the live cart with the demo line items so the template still shows
-      // a populated cart. Real storefronts would add items as the shopper does.
+
       let live = created.data;
-      for (const item of DEMO_CART.items) {
+      for (const item of itemsToSeed) {
         const variantId = item.variant?.id;
         if (!variantId) continue;
         const added = await addLineItem(live.id, variantId, item.quantity);
         if (cancelled) return;
         if (added.ok && added.data) live = added.data;
       }
-      setCart(live);
-      setLiveCart(true);
-      setBackendPricing(true);
-    })();
+
+      if (!cancelled) {
+        setCart(live);
+        setLiveCart(true);
+        setBackendPricing(true);
+      }
+    }
+
+    init();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [code]);
 
   // Resolve the adapter for the active processor whenever it changes. The
   // registry lazy-loads (and caches) the adapter module on first use.
@@ -194,28 +340,6 @@ export function CheckoutPage() {
       cancelled = true;
     };
   }, [processor]);
-
-  // Load the builder's theme configurations on mount
-  useEffect(() => {
-    let active = true;
-    fetch(`/api/omnicart-config?code=${encodeURIComponent(code)}`)
-      .then((r) => r.json())
-      .then((cfg) => {
-        if (!active) return;
-        if (cfg.success && cfg.data?.theme) {
-          setTheme(cfg.data.theme);
-        }
-        // Surface the Stripe publishable key so payment-class processors can
-        // mount Stripe Elements once a client secret is minted.
-        if (cfg.data?.stripePublishableKey) {
-          setStripePublishableKey(cfg.data.stripePublishableKey);
-        }
-      })
-      .catch((err) => console.error("Failed to load config theme", err));
-    return () => {
-      active = false;
-    };
-  }, [code]);
 
   const requiredAddressFields: (keyof ShippingAddress)[] = [
     "first_name",
