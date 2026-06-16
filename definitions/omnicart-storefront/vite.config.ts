@@ -1,6 +1,7 @@
 // Custom Vite config for omnicart-storefront - injects standard environment variables to browser
 import { defineConfig, loadEnv } from "vite";
 import path from "path";
+import fs from "node:fs";
 import react from "@vitejs/plugin-react";
 import { exec } from "node:child_process";
 import pino from "pino";
@@ -96,10 +97,54 @@ function reloadTriggerPlugin() {
   };
 }
 
+/**
+ * Parse a `KEY=value` dotenv-style file into a plain object. Returns `{}` when
+ * the file is absent. Used to surface the connector-injected secrets the
+ * DelegateBuild host writes to `.dev.vars` (workspace integration env:
+ * SUPABASE_URL/SUPABASE_ANON_KEY, OMNICART_BACKEND_URL/OMNICART_PUBLISHABLE_KEY,
+ * STRIPE_PUBLISHABLE_KEY, …) into the browser bundle's compile-time `define`
+ * map. `.dev.vars` is read by the Cloudflare worker runtime but NOT by Vite's
+ * `loadEnv`, so without this the client-side `import.meta.env.VITE_*`
+ * replacements resolve empty even though the worker has the keys.
+ */
+function loadDevVars(cwd: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of [".dev.vars", ".dev.vars.local"]) {
+    try {
+      const filePath = path.resolve(cwd, name);
+      if (!fs.existsSync(filePath)) continue;
+      const raw = fs.readFileSync(filePath, "utf8");
+      for (const line of raw.split(/\r?\n/)) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eq = trimmed.indexOf("=");
+        if (eq <= 0) continue;
+        const key = trimmed.slice(0, eq).trim();
+        let value = trimmed.slice(eq + 1).trim();
+        // Strip matching surrounding quotes.
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
+        if (key) out[key] = value;
+      }
+    } catch {
+      // Best-effort: a missing/unreadable .dev.vars must never break the build.
+    }
+  }
+  return out;
+}
+
 // https://vite.dev/config/
 export default ({ mode }: { mode: string }) => {
   // Load all environment variables (with empty prefix) so system env variables are also read
-  const env = loadEnv(mode, process.cwd(), "");
+  const fileEnv = loadEnv(mode, process.cwd(), "");
+  // Overlay connector-injected secrets the host wrote to .dev.vars (these are
+  // NOT visible to loadEnv). .dev.vars wins so the live workspace connection
+  // values reach the client bundle.
+  const env = { ...fileEnv, ...loadDevVars(process.cwd()) } as Record<string, string>;
   return defineConfig({
     plugins: [react(), cloudflare(), watchDependenciesPlugin(), reloadTriggerPlugin()],
     build: {
@@ -151,6 +196,14 @@ export default ({ mode }: { mode: string }) => {
       "import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY": JSON.stringify(process.env.OMNICART_PUBLISHABLE_KEY || env.OMNICART_PUBLISHABLE_KEY || ""),
       "import.meta.env.VITE_STRIPE_PUBLIC_KEY": JSON.stringify(process.env.STRIPE_PUBLISHABLE_KEY || env.STRIPE_PUBLISHABLE_KEY || ""),
       "import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY": JSON.stringify(process.env.STRIPE_PUBLISHABLE_KEY || env.STRIPE_PUBLISHABLE_KEY || ""),
+      // Supabase — the workspace's connected Supabase integration injects
+      // SUPABASE_URL / SUPABASE_ANON_KEY (with NEXT_PUBLIC_* aliases). The
+      // storefront client reads VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY,
+      // so bridge the connector names → the VITE_ names the app actually reads.
+      "process.env.VITE_SUPABASE_URL": JSON.stringify(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL || ""),
+      "process.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || ""),
+      "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.VITE_SUPABASE_URL || env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || env.VITE_SUPABASE_URL || ""),
+      "import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY": JSON.stringify(process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || ""),
     },
     cacheDir: "node_modules/.vite",
   });
