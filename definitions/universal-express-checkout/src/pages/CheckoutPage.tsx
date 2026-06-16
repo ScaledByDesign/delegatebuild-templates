@@ -7,7 +7,6 @@ import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
 import { PaymentStep, type PaymentResult } from "@/components/checkout/PaymentStep";
 import { ProcessorPicker } from "@/components/checkout/ProcessorPicker";
-import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   applyDiscount,
   removeDiscount,
@@ -56,6 +55,34 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
   { id: "ship_express", name: "Express (2-3 days)", amount: 1200 },
   { id: "ship_overnight", name: "Overnight", amount: 2500 },
 ];
+
+// ---------------------------------------------------------------------------
+// BRAND PALETTE (build-time injectable)
+// ---------------------------------------------------------------------------
+// The build agent injects the merchant's brand palette here. These values are
+// the SOURCE OF TRUTH for the checkout's look and are applied immediately on
+// first paint (no network round-trip). At runtime `/api/omnicart-config` may
+// still override them per-checkout-code, but the injected palette is what makes
+// a freshly generated storefront match the requested brand out of the box.
+//
+// To re-skin: change the values below. Colors are CSS color strings (hex/rgb).
+// `theme` (light) is intentionally the DEFAULT — this is a customer-facing
+// storefront, not a dashboard, so it should not follow the OS dark preference.
+export const BRAND_THEME = {
+  // Primary brand color — drives CTAs, links, focus rings, selected states.
+  primaryColor: "#2563eb",
+  // Accent / secondary brand color — drives highlights and success accents.
+  accentColor: "#16a34a",
+  // Page surface (background) and ink (foreground). Keep light by default.
+  backgroundColor: "#ffffff",
+  foregroundColor: "#0a0a0a",
+  // Body/heading font stack.
+  fontFamily: "Inter, sans-serif",
+  // Optional merchant logo URL (shown in the header instead of the wordmark).
+  logoUrl: "" as string,
+  supportEmail: "support@example.com",
+  statementName: "MERCHANT",
+};
 
 /**
  * Universal Express Checkout — the public checkout page at `/c/:code`.
@@ -183,10 +210,21 @@ export function CheckoutPage() {
   const { code = "demo" } = useParams<{ code: string }>();
   const navigate = useNavigate();
 
+  // Customer-facing storefront: force LIGHT on mount. The base reference's
+  // useTheme hook seeds dark from the OS `prefers-color-scheme`; a checkout
+  // must not inherit that. The `.checkout-root` scoped tokens already pin light
+  // visuals, but we also strip the document `.dark` class so nested base
+  // components (e.g. shadcn portals rendered outside `.checkout-root`) stay light.
+  useEffect(() => {
+    document.documentElement.classList.remove("dark");
+  }, []);
+
   interface CheckoutTheme {
     logoUrl?: string;
     primaryColor: string;
     accentColor: string;
+    backgroundColor: string;
+    foregroundColor: string;
     fontFamily: string;
     supportEmail: string;
     statementName: string;
@@ -231,12 +269,18 @@ export function CheckoutPage() {
   // `initPayment` (or surfaced from an SCA `requires_action`). Null in demo mode
   // and for CRM-class processors (which collect server-side, no Elements).
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  // Seed from the build-time injected BRAND_THEME so the storefront paints in
+  // the merchant's brand on first render (no flash of default colors, no
+  // network dependency). `/api/omnicart-config` may still override per-code.
   const [theme, setTheme] = useState<CheckoutTheme>({
-    primaryColor: "#2563eb",
-    accentColor: "#16a34a",
-    fontFamily: "Inter, sans-serif",
-    supportEmail: "support@example.com",
-    statementName: "MERCHANT",
+    logoUrl: BRAND_THEME.logoUrl || undefined,
+    primaryColor: BRAND_THEME.primaryColor,
+    accentColor: BRAND_THEME.accentColor,
+    backgroundColor: BRAND_THEME.backgroundColor,
+    foregroundColor: BRAND_THEME.foregroundColor,
+    fontFamily: BRAND_THEME.fontFamily,
+    supportEmail: BRAND_THEME.supportEmail,
+    statementName: BRAND_THEME.statementName,
   });
 
   // -- Lifecycle bootstrap ----------------------------------------------------
@@ -255,7 +299,10 @@ export function CheckoutPage() {
           const cfg = await res.json();
           if (cfg.success && cfg.data) {
             if (cfg.data.theme && !cancelled) {
-              setTheme(cfg.data.theme);
+              // Merge the per-checkout theme OVER the injected BRAND_THEME
+              // defaults so a partial config (e.g. only primary/accent)
+              // doesn't blank out the brand background/foreground/font.
+              setTheme((prev) => ({ ...prev, ...cfg.data.theme }));
             }
             if (cfg.data.stripePublishableKey && !cancelled) {
               stripePubKey = cfg.data.stripePublishableKey;
@@ -804,23 +851,56 @@ export function CheckoutPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: theme.fontFamily }}>
+    <div
+      className="checkout-root min-h-screen bg-background text-foreground"
+      style={{
+        fontFamily: theme.fontFamily,
+        background: theme.backgroundColor,
+        color: theme.foregroundColor,
+      }}
+    >
+      {/*
+        Storefront theming is SELF-CONTAINED and LIGHT BY DEFAULT.
+        Two layers:
+        1. Scope the shadcn HSL token variables to `.checkout-root` and PIN them
+           to LIGHT values. Because this rule also wins inside `html.dark`, the
+           base ThemeToggle / OS dark preference can NOT darken the checkout.
+           (These tokens are consumed as `hsl(var(--token))`, so they MUST stay
+           in "H S% L%" form — never raw hex.)
+        2. Brand primary/accent are injected hex colors, applied directly to the
+           `.text-/.bg-/.border-primary|accent` utilities + page background, so
+           the merchant palette shows through immediately on first paint.
+      */}
       <style>{`
-        :root {
-          --primary: ${theme.primaryColor};
-          --primary-foreground: #ffffff;
-          --ring: ${theme.primaryColor};
+        .checkout-root {
+          --background: 0 0% 100%;
+          --foreground: 0 0% 3.9%;
+          --card: 0 0% 100%;
+          --card-foreground: 0 0% 3.9%;
+          --popover: 0 0% 100%;
+          --popover-foreground: 0 0% 3.9%;
+          --primary-foreground: 0 0% 100%;
+          --secondary: 0 0% 96.1%;
+          --secondary-foreground: 0 0% 9%;
+          --muted: 0 0% 96.1%;
+          --muted-foreground: 0 0% 45.1%;
+          --accent: 0 0% 96.1%;
+          --accent-foreground: 0 0% 9%;
+          --border: 0 0% 89.8%;
+          --input: 0 0% 89.8%;
         }
-        .text-primary { color: ${theme.primaryColor} !important; }
-        .bg-primary { background-color: ${theme.primaryColor} !important; }
-        .border-primary { border-color: ${theme.primaryColor} !important; }
-        .focus-visible\\:ring-primary:focus-visible { --tw-ring-color: ${theme.primaryColor} !important; }
-        .has-\\[\\:checked\\]\\:border-primary:has(:checked) { border-color: ${theme.primaryColor} !important; }
-        
-        /* Accents */
-        .text-accent { color: ${theme.accentColor} !important; }
-        .bg-accent { background-color: ${theme.accentColor} !important; }
-        .border-accent { border-color: ${theme.accentColor} !important; }
+        /* Brand primary/accent (injected hex) — direct color hooks that win
+           over Tailwind's token utilities, and also set the focus ring. */
+        .checkout-root { background: ${theme.backgroundColor}; color: ${theme.foregroundColor}; }
+        .checkout-root .text-primary { color: ${theme.primaryColor} !important; }
+        .checkout-root .bg-primary { background-color: ${theme.primaryColor} !important; }
+        .checkout-root .border-primary { border-color: ${theme.primaryColor} !important; }
+        .checkout-root .ring-primary { --tw-ring-color: ${theme.primaryColor} !important; }
+        .checkout-root .focus-visible\\:ring-primary:focus-visible { --tw-ring-color: ${theme.primaryColor} !important; }
+        .checkout-root .has-\\[\\:checked\\]\\:border-primary:has(:checked) { border-color: ${theme.primaryColor} !important; }
+        .checkout-root .text-accent { color: ${theme.accentColor} !important; }
+        .checkout-root .bg-accent { background-color: ${theme.accentColor} !important; }
+        .checkout-root .border-accent { border-color: ${theme.accentColor} !important; }
       `}</style>
       
       {/* Announcement Banner */}
@@ -841,7 +921,6 @@ export function CheckoutPage() {
               </>
             )}
           </div>
-          <ThemeToggle />
         </div>
       </header>
 
@@ -896,7 +975,7 @@ export function CheckoutPage() {
             />
           </section>
 
-          <aside>
+          <aside className="lg:sticky lg:top-8 lg:self-start">
             <OrderSummary
               cart={summaryCart}
               shippingAmount={shippingAmount}

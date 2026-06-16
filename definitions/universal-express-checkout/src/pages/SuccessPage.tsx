@@ -29,6 +29,12 @@ export function SuccessPage() {
 
   const handoff = useMemo(() => loadHandoff(sessionId), [sessionId]);
 
+  // Customer-facing storefront: keep LIGHT (don't inherit the OS dark
+  // preference the base reference seeds). Mirrors CheckoutPage.
+  useEffect(() => {
+    document.documentElement.classList.remove("dark");
+  }, []);
+
   // Mirror server "session consumed": drop the handoff after we've rendered it
   // so a back-nav / refresh can't replay the upsell flow.
   useEffect(() => {

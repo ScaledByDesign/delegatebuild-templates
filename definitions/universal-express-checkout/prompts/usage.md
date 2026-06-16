@@ -157,6 +157,36 @@ Keep offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in co
 * Use the preinstalled **Shadcn/UI** components from `@/components/ui/...` (Button, Input, Card, Label, Separator, RadioGroup, Badge, Skeleton) rather than custom equivalents.
 * Use Tailwind spacing, layout and typography utilities. Icons come from `lucide-react`.
 
+### Brand palette injection (CRITICAL)
+
+The checkout is **LIGHT by default** (it is a customer-facing storefront, NOT a dashboard) and applies the merchant's brand palette on first paint. To skin the checkout to the requested brand, **edit the `BRAND_THEME` constant at the top of `src/pages/CheckoutPage.tsx`** — this is the single source of truth for the look:
+
+```ts
+export const BRAND_THEME = {
+  primaryColor: "#2563eb",     // CTAs, links, focus rings, selected states
+  accentColor: "#16a34a",      // highlights / success accents
+  backgroundColor: "#ffffff",  // page surface — keep light
+  foregroundColor: "#0a0a0a",  // ink
+  fontFamily: "Inter, sans-serif",
+  logoUrl: "",                 // optional merchant logo (replaces the wordmark)
+  supportEmail: "support@example.com",
+  statementName: "MERCHANT",
+};
+```
+
+When the build request supplies a brand color palette, **set these values** — do NOT leave the defaults. The `theme` state seeds directly from `BRAND_THEME`, and the page injects a scoped `<style>` (`.checkout-root`) that pins the shadcn HSL tokens to LIGHT and applies the brand hex colors to `.bg-primary` / `.text-primary` / `.bg-accent` / focus rings. `/api/omnicart-config?code=` may still override per-checkout-code at runtime, merged over these defaults.
+
+* **Do NOT make the checkout dark by default** and do NOT add a dark-mode toggle to the checkout — the storefront strips the document `.dark` class on mount.
+* **Do NOT use HSL triplets for the injected brand colors** — `BRAND_THEME` colors are plain CSS color strings (hex/rgb). The HSL token variables in the scoped `<style>` stay in `H S% L%` form because they are consumed via `hsl(var(--token))`.
+
+### Single-page stacked layout (CRITICAL)
+
+The checkout one-pager is a **two-column layout** (left: stacked sections, right: sticky order summary), NOT a step wizard. ALL sections render at once on the left, stacked top-to-bottom:
+
+1. Processor picker → 2. Cart line items (`CartStep`) → 3. Shipping address + options (`ShippingStep`) → 4. Payment (`PaymentStep`).
+
+The right column is a sticky `OrderSummary` (subtotal, shipping, tax, discount, total, coupon field). Keep this stacked layout — do NOT gate sections behind "next" steps or collapse them into a wizard. The `CheckoutSteps` indicator component exists but the one-pager renders every section visible simultaneously.
+
 ## Routing (CRITICAL)
 
 Uses `createBrowserRouter` - do NOT switch to `BrowserRouter`/`HashRouter`/`MemoryRouter`. If you switch routers, `RouteErrorBoundary`/`useRouteError()` will break.

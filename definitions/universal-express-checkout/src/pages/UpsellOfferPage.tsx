@@ -45,6 +45,12 @@ export function UpsellOfferPage() {
   // Rehydrate the paid order + flow session persisted at checkout handoff.
   const handoff = useMemo(() => loadHandoff(sessionId), [sessionId]);
 
+  // Customer-facing storefront: keep LIGHT (don't inherit the OS dark
+  // preference the base reference seeds). Mirrors CheckoutPage.
+  useEffect(() => {
+    document.documentElement.classList.remove("dark");
+  }, []);
+
   const [submitting, setSubmitting] = useState<"accept" | "decline" | null>(null);
 
   // Resolve the node to render. The handoff stores the flow session cursor; the
