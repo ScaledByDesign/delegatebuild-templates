@@ -179,6 +179,17 @@ When the build request supplies a brand color palette, **set these values** — 
 * **Do NOT make the checkout dark by default** and do NOT add a dark-mode toggle to the checkout — the storefront strips the document `.dark` class on mount.
 * **Do NOT use HSL triplets for the injected brand colors** — `BRAND_THEME` colors are plain CSS color strings (hex/rgb). The HSL token variables in the scoped `<style>` stay in `H S% L%` form because they are consumed via `hsl(var(--token))`.
 
+### Brand voice, product context & marketing persona (CRITICAL)
+
+The build brief may include a **brand voice / marketing persona** block and **product context** gathered up-front by the Delegate Checkout Builder AI (the merchant is asked for these at the start of the chat, and may also link Knowledge Base articles for company branding, product details, and persona). Treat any such guidance as **authoritative** and write ALL customer-facing copy to match it:
+
+* **Tone & voice** — Match the requested brand voice everywhere copy is generated: headlines, the value-prop / benefits blurb, button labels (e.g. the CTA / "Complete Order" text), trust-signal microcopy, upsell offer headlines and accept/decline labels, and the success/receipt page. If the persona says "premium and understated", do not write punchy hype copy; if it says "playful DTC", loosen up. Never fall back to generic "Complete your purchase" filler when a voice is supplied.
+* **Product context** — Use the supplied product description and target customer to write accurate, specific benefit copy and offer framing instead of placeholder text. Reflect who the buyer is in the persuasion angle.
+* **Marketing persona** — When a persona/ICP is provided, tailor the urgency, social proof, and upsell framing to that audience.
+* **Consistency** — The same voice must carry across the checkout one-pager, every upsell offer page, and the success page so the whole flow reads as one brand.
+
+The brand voice / persona text arrives in the natural-language build query (rendered by Delegate's `renderFunnelQuery` from `spec.meta.marketingPersona`) alongside the color palette — apply BOTH: palette → `BRAND_THEME`, voice/persona → generated copy.
+
 ### Single-page stacked layout (CRITICAL)
 
 The checkout one-pager is a **two-column layout** (left: stacked sections, right: sticky order summary), NOT a step wizard. ALL sections render at once on the left, stacked top-to-bottom:
