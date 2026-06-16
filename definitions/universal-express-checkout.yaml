@@ -17,3 +17,16 @@ package_patches:
     "@medusajs/medusa-js": "^6.1.7"
     "@stripe/stripe-js": "^4.10.0"
     "@stripe/react-stripe-js": "^2.9.0"
+
+# Clean up the browser header for a customer-facing storefront: replace the
+# Vite scaffold tab title and drop the Vite favicon <link> (no favicon.svg ships,
+# so removing the line avoids a 404 and a Vite-branded tab icon). The generator
+# should rewrite the <title> to the merchant's brand/product name when the build
+# brief supplies one.
+file_patches:
+  - file: "index.html"
+    replacements:
+      - find: "<title>Vite + React + TS</title>"
+        replace: "<title>Checkout</title>"
+      - find: "    <link rel=\"icon\" type=\"image/svg+xml\" href=\"/vite.svg\" />\n"
+        replace: ""

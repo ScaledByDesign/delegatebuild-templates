@@ -190,6 +190,10 @@ The build brief may include a **brand voice / marketing persona** block and **pr
 
 The brand voice / persona text arrives in the natural-language build query (rendered by Delegate's `renderFunnelQuery` from `spec.meta.marketingPersona`) alongside the color palette — apply BOTH: palette → `BRAND_THEME`, voice/persona → generated copy.
 
+### Browser tab title & favicon
+
+The `index.html` ships with a neutral `<title>Checkout</title>` and no Vite favicon — it is a customer-facing storefront, so it must NOT show "Vite + React + TS" in the browser tab. When the build brief supplies a brand/product name, **rewrite the `<title>` in `index.html` to that name** (e.g. `<title>Acme — Checkout</title>`). If a merchant logo/favicon is provided, add it as the favicon `<link rel="icon">`; otherwise leave the favicon out.
+
 ### Single-page stacked layout (CRITICAL)
 
 The checkout one-pager is a **two-column layout** (left: stacked sections, right: sticky order summary), NOT a step wizard. ALL sections render at once on the left, stacked top-to-bottom:
