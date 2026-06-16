@@ -5,8 +5,8 @@
  * and allows users to select their preferred shipping method.
  */
 
-import React, { useEffect, useState } from 'react'
-import { useCart } from '@/providers/cart'
+import React, { useEffect, useState, useCallback } from 'react'
+import { useCart } from '@/hooks/useCart'
 import { getShippingOptions, addShippingMethod } from '@/lib/fulfillment'
 import { AlertCircle, Loader, CheckCircle2 } from 'lucide-react'
 
@@ -43,25 +43,16 @@ export function ShippingMethodSelector({
   const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
   const [updating, setUpdating] = useState(false)
 
-  // Fetch available shipping options when cart changes
-  useEffect(() => {
-    if (!cart?.id) {
-      setLoading(false)
-      return
-    }
-
-    loadShippingOptions()
-  }, [cart?.id])
-
   /**
    * Load available shipping options for the current cart
    */
-  async function loadShippingOptions() {
+  const loadShippingOptions = useCallback(async () => {
+    if (!cart?.id) return;
     try {
       setLoading(true)
       setError(null)
 
-      const shippingOptions = await getShippingOptions(cart?.id!)
+      const shippingOptions = await getShippingOptions(cart.id)
       setOptions(shippingOptions)
 
       // Set the currently selected option
@@ -75,18 +66,33 @@ export function ShippingMethodSelector({
     } finally {
       setLoading(false)
     }
-  }
+  }, [cart?.id, cart?.shipping_methods]);
+
+  // Fetch available shipping options when cart changes
+  useEffect(() => {
+    if (!cart?.id) {
+      setLoading(false)
+      return
+    }
+
+    loadShippingOptions()
+  }, [cart?.id, loadShippingOptions])
 
   /**
    * Handle shipping method selection
    */
   async function handleMethodChange(optionId: string) {
+    if (!cart?.id) {
+      setError('Cart not found.')
+      return
+    }
+
     try {
       setUpdating(true)
       setError(null)
 
       // Update cart with selected shipping method
-      const updatedCart = await addShippingMethod(cart?.id!, optionId)
+      const updatedCart = await addShippingMethod(cart.id, optionId)
       setCart?.(updatedCart)
       setSelectedOptionId(optionId)
 

@@ -14,11 +14,13 @@ import Medusa from "@medusajs/medusa-js";
 
 const isBrowser = typeof window !== 'undefined';
 export const OMNICART_BACKEND_URL = (isBrowser && (window as any).VITE_OMNICART_BACKEND_URL) || 
-  import.meta.env.VITE_OMNICART_BACKEND_URL || 
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_BACKEND_URL) || 
+  (process.env.OMNICART_BACKEND_URL) ||
   "https://demo.omnicart.commerce";
 
 export const OMNICART_PUBLISHABLE_KEY = (isBrowser && (window as any).VITE_OMNICART_PUBLISHABLE_KEY) ||
-  import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY ||
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
+  (process.env.OMNICART_PUBLISHABLE_KEY) ||
   "";
 
 // The OmniCart client points directly to the configured OmniCart (Medusa) backend.

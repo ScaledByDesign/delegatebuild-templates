@@ -133,6 +133,8 @@ export default ({ mode }: { mode: string }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
         "@shared": path.resolve(__dirname, "./shared"),
+        "react": path.resolve(__dirname, "./node_modules/react"),
+        "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
       },
     },
     optimizeDeps: {

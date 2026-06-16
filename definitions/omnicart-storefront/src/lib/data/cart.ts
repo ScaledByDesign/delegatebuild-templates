@@ -24,9 +24,10 @@ export const isTerminalPaymentSessionError = (error: any): boolean => {
 }
 
 // Ensure publishable key is sent with store requests
-const OMNICART_PUBLISHABLE_KEY = (typeof window !== 'undefined' && (import.meta as any)?.env?.VITE_OMNICART_PUBLISHABLE_KEY)
-  || (typeof process !== 'undefined' ? process.env.VITE_OMNICART_PUBLISHABLE_KEY : undefined)
-  || 'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
+const OMNICART_PUBLISHABLE_KEY =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
+  (process.env.OMNICART_PUBLISHABLE_KEY) ||
+  'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
 
 // VNSH storefront sales channel for product/carts visibility
 const VNSH_SALES_CHANNEL_ID = 'sc_01K5CH69P710A6RJGS2PEGS9FM'
@@ -242,7 +243,9 @@ export const createCart = async (regionId?: string) => {
         const text = await resp.text()
         console.error('createCart response body:', text)
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
     throw medusaError(error)
   }
 }
@@ -335,7 +338,9 @@ export const addToCart = async (
         const text = await resp.text()
         console.error('addToCart response body:', text)
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
     throw medusaError(error)
   }
 }

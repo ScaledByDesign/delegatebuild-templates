@@ -195,7 +195,7 @@ function useYotpoProductData(): YotpoProductData {
 
   useEffect(() => {
     // Check if we're on a product page
-    const match = location.pathname.match(/\/products\/([^\/]+)/);
+    const match = location.pathname.match(/\/products\/([^/]+)/);
     if (!match) {
       console.log('📭 No product detected in URL');
       setData({ productId: null, productName: null, productUrl: null });
@@ -437,7 +437,7 @@ export default function ReviewsDrawerManager() {
 
       if (!currentProductId || currentProductId === '') {
         console.log('Skipping Yotpo - no product ID available');
-        callback && callback();
+        callback?.();
         return;
       }
 
@@ -446,7 +446,7 @@ export default function ReviewsDrawerManager() {
       // Check if Yotpo is already available
       if ((window as any).yotpoLoaded) {
         console.log('Yotpo already loaded');
-        callback && callback();
+        callback?.();
         return;
       }
 
@@ -458,7 +458,7 @@ export default function ReviewsDrawerManager() {
         if ((window as any).yotpoWidgetsContainer || (window as any).yotpo) {
           console.log('Yotpo V3 loader available');
           (window as any).yotpoLoaded = true;
-          callback && callback();
+          callback?.();
           return;
         }
 
@@ -468,7 +468,7 @@ export default function ReviewsDrawerManager() {
         } else {
           console.warn('Yotpo V3 loader timeout - loader script may not have loaded from index.html');
           (window as any).yotpoLoaded = true; // Mark as attempted even if failed
-          callback && callback();
+          callback?.();
         }
       };
 

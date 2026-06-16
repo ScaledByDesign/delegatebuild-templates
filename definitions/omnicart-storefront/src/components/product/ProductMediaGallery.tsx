@@ -59,6 +59,11 @@ const ProductMediaGallery: React.FC<ProductMediaGalleryProps> = ({
 }) => {
   const isMobile = useIsMobile()
 
+  const clampedIndex = images.length ? Math.min(selectedIndex, images.length - 1) : 0
+  const currentImage = images[clampedIndex]
+
+  const currentSrcSet = useMemo(() => buildSrcSet(currentImage), [currentImage])
+
   if (!images.length) {
     return (
       <div className="w-full aspect-square bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
@@ -66,11 +71,6 @@ const ProductMediaGallery: React.FC<ProductMediaGalleryProps> = ({
       </div>
     )
   }
-
-  const clampedIndex = Math.min(selectedIndex, images.length - 1)
-  const currentImage = images[clampedIndex]
-
-  const currentSrcSet = useMemo(() => buildSrcSet(currentImage), [currentImage])
 
   const GalleryImage = (
     <>

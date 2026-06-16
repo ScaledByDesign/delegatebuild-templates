@@ -35,7 +35,12 @@ export const StripePaymentWrapperV2: React.FC<StripePaymentWrapperV2Props> = ({
   clientSecret,
 }) => {
   const stripePromise = useMemo(
-    () => loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY),
+    () => loadStripe(
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLIC_KEY) ||
+      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY) ||
+      (process.env.STRIPE_PUBLISHABLE_KEY) ||
+      ''
+    ),
     []
   );
 

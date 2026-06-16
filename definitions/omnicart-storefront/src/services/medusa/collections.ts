@@ -1,7 +1,10 @@
 // Using direct API client for CORS-free API access
 import { medusaClient } from '../../lib/medusa-client';
 
-const OMNICART_PUBLISHABLE_KEY = import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY || 'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
+const OMNICART_PUBLISHABLE_KEY =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
+  (process.env.OMNICART_PUBLISHABLE_KEY) ||
+  'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
 const VNSH_SALES_CHANNEL_ID = 'sc_01K5CH69P710A6RJGS2PEGS9FM'
 
 export interface MedusaCollection {

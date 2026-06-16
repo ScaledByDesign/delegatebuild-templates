@@ -13,18 +13,20 @@ This template generates a complete **OmniCart Headless Storefront**. It connects
 - **Customer Dashboard (`src/pages/Account.tsx`)** - Order history, track status, user profile, loyalty tier metrics.
 - **Search (`src/pages/Search.tsx`)** - Query inputs, filtering, sort selectors, and search results.
 
-## Client Configuration & API (`src/lib/sdk.ts` & `src/lib/medusa-client.ts`)
+## Client Configuration & API (`src/lib/medusa-client.ts` & `src/lib/sdk.ts`)
 
-Store operations are performed directly against the commerce backend using the official JS SDK initialized via:
+Store operations are performed directly against the commerce backend using the fetch-based `medusaClient` instance:
 ```typescript
-import { medusa } from "./medusa-client";
+import { medusaClient } from "@/lib/medusa-client";
 
 // Browse catalog
-const products = await medusa.store.product.list({ limit: 10 });
+const data = await medusaClient.get<{ products: any[] }>("/store/products", {
+  query: { limit: 10 }
+});
 // Manage cart
-const cart = await medusa.store.cart.create();
+const cart = await medusaClient.post<{ cart: any }>("/store/carts");
 ```
-All SDK requests use browser fetch and run client-side using these environment configurations:
+All client API requests use browser fetch and run client-side using these environment configurations:
 - `VITE_OMNICART_BACKEND_URL` — Base URL of the OmniCart commerce server.
 - `VITE_OMNICART_PUBLISHABLE_KEY` — Public publishable API key for the storefront channel.
 
@@ -38,3 +40,9 @@ Checkout page integrates PCI-compliant card fields using `@stripe/stripe-js` and
 
 - **Tailwind Palette**: Merchant-specific styling is customized directly in the local `tailwind.config.js` to enable brand highlights, custom buttons, custom fonts, and animations.
 - **Light Theme**: The storefront layout is styled using light theme tokens as the default. Avoid forcing a dark mode or displaying toggles unless requested.
+
+## Core Architecture and Protected Files
+
+To maintain storefront stability and ensure production-grade checkout, the core ecommerce plumbing is strictly protected and read-only.
+- **Do not attempt to rewrite or modify** `src/components/product/ProductMediaGallery.tsx`, `src/pages/ProductDetail.tsx`, `src/pages/ExpressCheckout.tsx`, or any files under `src/lib/`, `src/hooks/`, or `src/context/`.
+- Focus your modifications on user-facing storefront customisations, such as rewriting the homepage (`src/pages/Index.tsx`), adding marketing sections, adjusting styles, or adding custom landing pages.

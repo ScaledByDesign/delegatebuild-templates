@@ -147,7 +147,7 @@ const Collection = () => {
       setTitle(formattedCategory);
       setDescription('');
     }
-  }, [category, collection]);
+  }, [category, collection, normalizedCategory]);
 
   // Use real products from Medusa
   const displayProducts = products || [];

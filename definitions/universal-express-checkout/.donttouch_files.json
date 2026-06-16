@@ -1,0 +1,19 @@
+[
+  "vite.config.ts",
+  "wrangler.jsonc",
+  "tailwind.config.js",
+  "postcss.config.js",
+  "tsconfig.json",
+  "tsconfig.app.json",
+  "tsconfig.node.json",
+  ".gitignore",
+  "src/lib/",
+  "src/pages/CheckoutPage.tsx",
+  "src/pages/SuccessPage.tsx",
+  "src/pages/UpsellOfferPage.tsx",
+  "src/components/checkout/",
+  "worker/",
+  ".donttouch_files.json",
+  ".important_files.json",
+  ".redacted_files.json"
+]

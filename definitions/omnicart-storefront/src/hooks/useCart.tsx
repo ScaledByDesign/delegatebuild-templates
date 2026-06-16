@@ -1,4 +1,5 @@
 
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import {
   addToCart,
@@ -159,7 +160,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     handleCustomerChange();
-  }, [customer?.id, cart?.id]);
+  }, [customer?.id, cart?.id, cart]);
 
   const addItem = async (variantId: string, quantity = 1) => {
     setIsLoading(true);

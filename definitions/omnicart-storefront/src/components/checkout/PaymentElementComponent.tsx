@@ -69,22 +69,7 @@ export const PaymentElementComponent: React.FC<
     [],
   );
 
-  const handleShippingChange = useCallback(
-    (event: StripeAddressElementChangeEvent) => {
-      if (event.complete) {
-        console.log("Shipping address collected from Stripe:", event.value);
-        setShippingAddress(event.value);
-
-        // Sync address with Medusa to recalculate tax
-        if (cartId) {
-          syncAddressWithMedusa(event.value);
-        }
-      }
-    },
-    [cartId],
-  );
-
-  const syncAddressWithMedusa = async (stripeAddress: any) => {
+  const syncAddressWithMedusa = useCallback(async (stripeAddress: any) => {
     try {
       console.log("🏠 Syncing address with Medusa for tax calculation...");
       console.log("📍 Raw Stripe Address Element value:", stripeAddress);
@@ -162,7 +147,22 @@ export const PaymentElementComponent: React.FC<
       console.error("❌ Failed to sync address with Medusa:", error);
       // Don't stop payment for address sync failure - just log it
     }
-  };
+  }, [cartId, onAddressUpdated]);
+
+  const handleShippingChange = useCallback(
+    (event: StripeAddressElementChangeEvent) => {
+      if (event.complete) {
+        console.log("Shipping address collected from Stripe:", event.value);
+        setShippingAddress(event.value);
+
+        // Sync address with Medusa to recalculate tax
+        if (cartId) {
+          syncAddressWithMedusa(event.value);
+        }
+      }
+    },
+    [cartId, syncAddressWithMedusa],
+  );
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {

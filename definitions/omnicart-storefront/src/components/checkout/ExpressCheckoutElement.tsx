@@ -337,7 +337,7 @@ export const ExpressCheckout: React.FC<ExpressCheckoutProps> = ({
         onError(error instanceof Error ? error.message : 'Payment error');
       }
     },
-    [stripe, elements, onSuccess, onError, onProcessing, cartId]
+    [stripe, elements, onSuccess, onError, onProcessing, cartId, onBeforeConfirm]
   );
 
   return (

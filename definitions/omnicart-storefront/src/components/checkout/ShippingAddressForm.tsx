@@ -91,7 +91,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
   // Validation functions
   const validatePhone = (value: string) => {
     if (!value) return 'Phone is required';
-    const phoneRegex = /^[\d\s\-\(\)]+$/;
+    const phoneRegex = /^[\d\s\-()]+$/;
     if (!phoneRegex.test(value) || value.replace(/\D/g, '').length < 10) {
       return 'Please enter a valid phone number';
     }
@@ -111,18 +111,18 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
   };
 
   // Check if form is complete (inline to avoid dependency issues)
-  const isFormComplete = () => {
+  const isFormComplete = React.useCallback(() => {
     return !!(
       name && phone && address1 && city && state && zip &&
       !validatePhone(phone) &&
       !validateZip(zip)
     );
-  };
+  }, [name, phone, address1, city, state, zip]);
 
   // Check if we have minimum fields for tax calculation
-  const hasMinimumForTax = () => {
+  const hasMinimumForTax = React.useCallback(() => {
     return !!(state && zip && !validateZip(zip));
-  };
+  }, [state, zip]);
 
   // Early tax calculation when state + zip are filled
   // IMPORTANT: We use a placeholder address_1 to avoid overwriting real address data
@@ -172,7 +172,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
     }, 500); // Faster debounce for tax (500ms vs 800ms for full address)
 
     return () => clearTimeout(timer);
-  }, [state, zip, cartId, address1, city, name, phone]);
+  }, [state, zip, cartId, address1, city, name, phone, hasMinimumForTax, isFormComplete]);
 
   // Debounced sync with Medusa - OPTIMIZED: Single call updates address + calculates taxes
   useEffect(() => {
@@ -234,7 +234,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
     }, 800); // Debounce 800ms
 
     return () => clearTimeout(timer);
-  }, [name, phone, address1, address2, city, state, zip, cartId]);
+  }, [name, phone, address1, address2, city, state, zip, cartId, isFormComplete]);
 
   return (
     <div className="space-y-4">

@@ -42,21 +42,9 @@ const safeStorage = {
 
 let supabase: SupabaseClient;
 
-try {
-  supabase = createClient(
-    SUPABASE_URL || 'https://placeholder.supabase.co',
-    SUPABASE_PUBLISHABLE_KEY || 'placeholder-key',
-    {
-      auth: {
-        storage: safeStorage,
-        persistSession: true,
-        autoRefreshToken: true,
-      }
-    }
-  );
-} catch (error) {
-  console.error('🚨 Failed to create Supabase client:', error);
-  // Create a minimal mock client that won't crash the app
+// Check if configuration is missing and use mock client immediately
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  console.warn('🚨 Supabase configuration missing. App will use mock client.');
   supabase = {
     from: () => ({
       select: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
@@ -69,6 +57,35 @@ try {
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
     },
   } as unknown as SupabaseClient;
+} else {
+  try {
+    supabase = createClient(
+      SUPABASE_URL,
+      SUPABASE_PUBLISHABLE_KEY,
+      {
+        auth: {
+          storage: safeStorage,
+          persistSession: true,
+          autoRefreshToken: true,
+        }
+      }
+    );
+  } catch (error) {
+    console.error('🚨 Failed to create Supabase client:', error);
+    // Create a minimal mock client that won't crash the app
+    supabase = {
+      from: () => ({
+        select: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+        insert: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+        update: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+        delete: () => Promise.resolve({ data: null, error: new Error('Supabase not configured') }),
+      }),
+      auth: {
+        getSession: () => Promise.resolve({ data: { session: null }, error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      },
+    } as unknown as SupabaseClient;
+  }
 }
 
 export { supabase };

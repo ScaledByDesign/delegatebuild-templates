@@ -55,21 +55,7 @@ export const PaymentElementComponentV2: React.FC<PaymentElementComponentProps> =
     }
   }, [cartId]);
 
-  const handleShippingChange = useCallback((event: StripeAddressElementChangeEvent) => {
-    console.log('Shipping address changed:', { complete: event.complete, value: event.value });
-
-    // Always sync when state changes (for tax recalculation)
-    // Even if form is not complete, we want to update tax when state changes
-    const hasState = event.value?.address?.state;
-    const hasMinimalAddress = event.value?.address?.city && event.value?.address?.postal_code;
-
-    if (hasState && hasMinimalAddress && cartId) {
-      console.log('🔄 State changed, syncing for tax recalculation...');
-      syncAddressWithMedusa(event.value);
-    }
-  }, [cartId]);
-
-  const syncAddressWithMedusa = async (stripeAddress: any) => {
+  const syncAddressWithMedusa = useCallback(async (stripeAddress: any) => {
     try {
       console.log('🏠 Syncing address with Medusa for tax calculation...');
       console.log('📍 Raw Stripe Address Element value:', stripeAddress);
@@ -153,7 +139,21 @@ export const PaymentElementComponentV2: React.FC<PaymentElementComponentProps> =
       console.error('❌ Failed to sync address with Medusa:', error);
       // Don't stop payment for address sync failure - just log it
     }
-  };
+  }, [cartId, onAddressUpdated]);
+
+  const handleShippingChange = useCallback((event: StripeAddressElementChangeEvent) => {
+    console.log('Shipping address changed:', { complete: event.complete, value: event.value });
+
+    // Always sync when state changes (for tax recalculation)
+    // Even if form is not complete, we want to update tax when state changes
+    const hasState = event.value?.address?.state;
+    const hasMinimalAddress = event.value?.address?.city && event.value?.address?.postal_code;
+
+    if (hasState && hasMinimalAddress && cartId) {
+      console.log('🔄 State changed, syncing for tax recalculation...');
+      syncAddressWithMedusa(event.value);
+    }
+  }, [cartId, syncAddressWithMedusa]);
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent) => {

@@ -19,7 +19,7 @@ fi
 
 # 1) Generate templates into build/
 echo "🧱 Generating templates into build/..."
-python3 tools/generate_templates.py --clean --sync-lockfiles
+python3 tools/generate_templates.py --clean
 echo "✅ Templates generated"
 
 # 2) Generate template catalog (generate_template_catalog.py now defaults to ./build)
@@ -92,7 +92,7 @@ ls -la zips/
 
 # Verify Wrangler CLI is available
 echo "⚙️  Verifying Wrangler CLI..."
-wrangler --version
+npx wrangler --version
 echo "✅ Wrangler CLI ready"
 
 # Determine R2 endpoint based on LOCAL_R2 environment variable
@@ -116,7 +116,7 @@ upload_to_r2() {
   local description="$3"
   
   echo "Uploading: $description"
-  if wrangler r2 object put "${R2_BUCKET_NAME}/$r2_key" --file="$file_path" $R2_FLAGS; then
+  if npx wrangler r2 object put "${R2_BUCKET_NAME}/$r2_key" --file="$file_path" $R2_FLAGS; then
     echo "✅ Successfully uploaded $description"
     return 0
   else

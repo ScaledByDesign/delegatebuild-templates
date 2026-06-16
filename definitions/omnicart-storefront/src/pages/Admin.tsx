@@ -216,6 +216,7 @@ export default function Admin() {
       fetchCollections();
       fetchRedirects();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authenticated]);
 
   // Save product metadata

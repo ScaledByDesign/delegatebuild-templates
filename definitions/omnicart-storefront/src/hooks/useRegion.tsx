@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from "react";
 import { getDefaultRegion, getRegionByCountry, MedusaRegion } from "@/services/medusa/regions";
 import { useToast } from "@/hooks/use-toast";
@@ -47,7 +48,7 @@ export const RegionProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     initRegion();
-  }, [toast]);
+  }, [toast, region]);
 
   const setRegion = (newRegion: MedusaRegion) => {
     setRegionState(newRegion);

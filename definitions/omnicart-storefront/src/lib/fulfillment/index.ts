@@ -9,8 +9,8 @@ import { Medusa } from '@medusajs/js-sdk'
 
 // Initialize Medusa client
 const medusa = new Medusa({
-  publishable_key: process.env.VITE_OMNICART_PUBLISHABLE_KEY || 'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20',
-  baseUrl: process.env.VITE_OMNICART_BACKEND_URL || 'https://vnsh.omnicart.cc'
+  publishable_key: (process.env.OMNICART_PUBLISHABLE_KEY) || (process.env.VITE_OMNICART_PUBLISHABLE_KEY) || 'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20',
+  baseUrl: (process.env.OMNICART_BACKEND_URL) || (process.env.VITE_OMNICART_BACKEND_URL) || 'https://vnsh.omnicart.cc'
 })
 
 /**

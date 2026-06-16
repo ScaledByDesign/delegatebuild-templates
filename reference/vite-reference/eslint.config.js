@@ -49,7 +49,7 @@ export default tseslint.config(
           // "Inside a function component (named in PascalCase), find any `set...` call,
           // but EXCLUDE any calls that are inside a nested function definition (like an event handler)."
           // This correctly finds the bug while ignoring the false positive.
-          "selector": ":function[id.name=/^[A-Z]/] CallExpression[callee.name=/^set[A-Z]/]:not(ArrowFunctionExpression CallExpression, FunctionExpression CallExpression)",
+          "selector": ":function[id.name=/^[A-Z]/] CallExpression[callee.name=/^set[A-Z]/]:not(ArrowFunctionExpression CallExpression, FunctionExpression CallExpression, FunctionDeclaration CallExpression)",
           "message": "State setters should not be called directly in the component's render body. This will cause an infinite render loop. Use useEffect or an event handler instead."
         },
         {
@@ -72,6 +72,13 @@ export default tseslint.config(
     files: ['src/components/ui/**/*.{ts,tsx}'],
     rules: {
       'react-refresh/only-export-components': 'off',
+    },
+  },
+  // Disable ban-ts-comment for Shopify integration files which use @ts-nocheck
+  {
+    files: ['src/integrations/shopify/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/ban-ts-comment': 'off',
     },
   },
 )

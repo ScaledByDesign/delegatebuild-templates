@@ -263,8 +263,12 @@ export function CheckoutPage() {
   const [paying, setPaying] = useState(false);
   const [flowError, setFlowError] = useState<string | null>(null);
   // Stripe publishable key from /api/omnicart-config (empty in demo mode). Used
-  // by PaymentStep to mount Stripe Elements for payment-class processors.
-  const [stripePublishableKey, setStripePublishableKey] = useState<string>("");
+  const [stripePublishableKey, setStripePublishableKey] = useState<string>(
+    () => (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY) ||
+          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLIC_KEY) ||
+          (process.env.STRIPE_PUBLISHABLE_KEY) ||
+          ""
+  );
   // PaymentIntent client secret minted by the active payment-class adapter's
   // `initPayment` (or surfaced from an SCA `requires_action`). Null in demo mode
   // and for CRM-class processors (which collect server-side, no Elements).
