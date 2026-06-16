@@ -301,8 +301,9 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const env = c.env as OmniCartEnv;
     const backend = env.OMNICART_BACKEND_URL || 'https://demo.omnicart.commerce';
     const upstreamPath = c.req.path.replace(/^\/api\/omnicart/, '');
+    const targetPath = upstreamPath.startsWith('/store') ? upstreamPath : `/store${upstreamPath}`;
     const url = new URL(c.req.url);
-    const target = `${backend.replace(/\/$/, '')}/store${upstreamPath}${url.search}`;
+    const target = `${backend.replace(/\/$/, '')}${targetPath}${url.search}`;
 
     const headers = new Headers(c.req.raw.headers);
     headers.delete('host');

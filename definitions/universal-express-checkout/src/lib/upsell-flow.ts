@@ -53,17 +53,8 @@ export interface StartFlowResult {
 }
 
 /** True if the OmniCart backend reports a wired upsell flow runtime. */
-async function backendConfigured(): Promise<boolean> {
-  try {
-    const res = await fetch("/api/omnicart-config");
-    if (!res.ok) return false;
-    const json = (await res.json()) as {
-      data?: { backendConfigured?: boolean };
-    };
-    return Boolean(json?.data?.backendConfigured);
-  } catch {
-    return false;
-  }
+function backendConfigured(): boolean {
+  return Boolean(import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_URL);
 }
 
 // ─── Demo (no-backend) in-browser flow walker ────────────────────────────────
@@ -163,29 +154,104 @@ function demoStep(
  * configured.
  */
 export async function startUpsellFlow(input: StartFlowInput): Promise<StartFlowResult> {
-  if (!(await backendConfigured())) {
+  const runtimeUrl = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_URL;
+  if (!runtimeUrl) {
     return demoStart(input);
   }
-  const res = await fetch("/api/upsell/session", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      orderId: input.orderId,
-      originalOrderTotal: input.originalOrderTotal,
-      currencyCode: input.currencyCode,
-      flowId: input.flowId,
-      paymentMethodId: input.paymentMethodId,
-      paymentIntentId: input.paymentIntentId,
-    }),
-  });
-  if (!res.ok) {
-    // Backend hiccup — degrade to the demo flow rather than blocking the order.
-    return demoStart(input);
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const token = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_TOKEN;
+  if (token) {
+    headers["authorization"] = `Bearer ${token}`;
   }
-  const json = (await res.json()) as {
-    data: { session: FlowSession; entry_node: FlowNode | null };
+  
+  // Direct call to platform/runtime's init endpoint
+  const target = `${runtimeUrl.replace(/\/$/, "")}/api/flow-builder/init`;
+  const platformBody = {
+    order_id: input.orderId,
+    original_order_total: input.originalOrderTotal,
+    flow_id: input.flowId,
+    currency_code: input.currencyCode,
   };
-  return { session: json.data.session, entry_node: json.data.entry_node, demo: false };
+
+  try {
+    const res = await fetch(target, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(platformBody),
+    });
+    if (!res.ok) {
+      return demoStart(input);
+    }
+    const platformJson = (await res.json()) as { session: any; entry_button: any };
+    const session = platformJson.session;
+    const entry_button = platformJson.entry_button;
+
+    const readJourneySteps = (journey: any): any[] => {
+      if (!journey || typeof journey !== "object" || Array.isArray(journey)) {
+        return [];
+      }
+      const steps = journey.steps;
+      if (!Array.isArray(steps)) return [];
+      return steps;
+    };
+
+    const flowSession = session ? {
+      id: session.id,
+      flow_id: session.flowId,
+      status: session.status,
+      current_button_id: session.currentButtonId,
+      journey: readJourneySteps(session.journey).map((s: any) => ({
+        button_id: s.buttonId,
+        button_text: s.buttonText,
+        action: s.action,
+        revenue: s.revenue,
+        timestamp: s.timestamp,
+      })),
+      total_revenue: session.totalRevenueCents ?? 0,
+      upsell_total: session.upsellTotalCents ?? 0,
+      currency_code: session.currencyCode || "USD",
+      version: session.version ?? 1,
+    } : null;
+
+    let flowNode = null;
+    if (entry_button) {
+      const meta = (entry_button.metadata ?? {}) as Record<string, unknown>;
+      const pitch = typeof meta.description === "string" ? meta.description : (typeof meta.subheadline === "string" ? meta.subheadline : null);
+      const compare_at_price = typeof meta.compareAtPrice === "number" ? meta.compareAtPrice : null;
+      const decline_text = typeof meta.declineText === "string" ? meta.declineText : null;
+      const accept_options = Array.isArray(entry_button.acceptOptions)
+        ? entry_button.acceptOptions.map((v: any) => ({
+            id: v.id,
+            label: v.label || "",
+            price: v.price,
+            compareAtPrice: v.compareAtPrice ?? null,
+            ctaText: v.ctaText ?? null,
+          }))
+        : null;
+
+      flowNode = {
+        id: entry_button.id,
+        label: typeof meta.headline === "string" && meta.headline ? meta.headline : entry_button.label,
+        button_text: entry_button.buttonText,
+        pitch,
+        display_price: entry_button.displayPrice ?? null,
+        currency_code: entry_button.currencyCode || "USD",
+        compare_at_price,
+        accept_options,
+        decline_text,
+        success_next_button_id: entry_button.successNextButtonId ?? null,
+        decline_next_button_id: entry_button.declineNextButtonId ?? null,
+        is_terminal_success: entry_button.isTerminalSuccess ?? false,
+        is_terminal_decline: entry_button.isTerminalDecline ?? false,
+        timer: entry_button.timer ?? null,
+        external_page_url: entry_button.externalPageUrl ?? null,
+      };
+    }
+
+    return { session: flowSession!, entry_node: flowNode, demo: false };
+  } catch {
+    return demoStart(input);
+  }
 }
 
 /**
@@ -214,6 +280,11 @@ export async function stepUpsellFlow(args: {
     return demoStep(action, nodeId, variantId);
   }
 
+  const runtimeUrl = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_URL;
+  if (!runtimeUrl) {
+    return { session, next_node: null, is_terminal: true };
+  }
+
   const qs = new URLSearchParams({
     action,
     sessionId: session.id,
@@ -222,11 +293,15 @@ export async function stepUpsellFlow(args: {
   });
   if (variantId) qs.set("variantId", variantId);
 
-  const res = await fetch(`/api/upsell/click?${qs.toString()}`, {
+  const headers: Record<string, string> = { accept: "application/json" };
+  const token = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_TOKEN;
+  if (token) {
+    headers["authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${runtimeUrl.replace(/\/$/, "")}/api/flow-builder/click?${qs.toString()}`, {
     method: "GET",
-    // The runtime answers SPA clicks with JSON (the 302 anchor-link variant is
-    // for no-JS pages); the worker proxy normalizes both to JSON for us.
-    headers: { accept: "application/json" },
+    headers,
   });
   const json = (await res.json()) as { data: FlowStepResult } | FlowStepResult;
   // Tolerate both `{ data: ... }` and bare result envelopes from the proxy.

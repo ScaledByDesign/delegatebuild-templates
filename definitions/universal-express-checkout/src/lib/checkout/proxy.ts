@@ -1,27 +1,10 @@
-/**
- * Same-origin Worker proxy helper for the universal checkout adapters.
- *
- * Every processor adapter (Stripe, OmniCart, Konnektive, Sticky.io) talks to its
- * backend through the Cloudflare Worker proxy mounted at `/api/checkout/*` so
- * processor credentials never touch the browser. The Worker keys each backend on
- * the processor id (`/api/checkout/:kind/...`) and returns `503 { demo: true }`
- * when that processor has no backend configured.
- *
- * This helper centralizes that contract:
- *   - decodes the `503 { demo: true }` signal into a typed `{ demo: true }` result
- *     so adapters can return the contract's `demo` branch instead of erroring;
- *   - normalizes non-OK responses into a structured error (never throws on a
- *     network/decline path — adapters map that to `{ status: "failed" }`);
- *   - keeps the JSON content-type + body plumbing in one place.
- */
-
 import type { ProcessorKind } from "./manifest";
 
-/** Result of a proxied call. Mirrors `BackendResult<T>` in `@/lib/omnicart`. */
+/** Result of a direct call. Mirrors `BackendResult<T>` in `@/lib/omnicart`. */
 export interface ProxyResult<T> {
   ok: boolean;
   data?: T;
-  /** True when the proxy returned `503 { demo: true }` (no backend wired). */
+  /** True when no backend is wired. */
   demo?: boolean;
   /** HTTP status, when a response was received. */
   httpStatus?: number;
@@ -29,14 +12,17 @@ export interface ProxyResult<T> {
   error?: string;
 }
 
-const CHECKOUT_BASE = "/api/checkout";
+const getBackendUrl = (kind: ProcessorKind): string => {
+  const isBrowser = typeof window !== 'undefined';
+  if (isBrowser && (window as any)[`VITE_${kind.toUpperCase()}_CHECKOUT_BACKEND_URL`]) {
+    return (window as any)[`VITE_${kind.toUpperCase()}_CHECKOUT_BACKEND_URL`];
+  }
+  const envKey = `VITE_${kind.toUpperCase()}_CHECKOUT_BACKEND_URL`;
+  return import.meta.env[envKey] || "";
+};
 
 /**
- * POST a JSON body to `/api/checkout/:kind/:path` and decode the response.
- *
- * `pick` maps the decoded JSON to the value the adapter wants. A `503 { demo }`
- * resolves to `{ ok:false, demo:true }`; any other non-OK resolves to
- * `{ ok:false, error }`; a network throw is caught and normalized.
+ * POST a JSON body directly to the backend URL and decode the response.
  */
 export async function checkoutProxy<T>(
   kind: ProcessorKind,
@@ -46,11 +32,25 @@ export async function checkoutProxy<T>(
   fallbackError: string,
   init?: { method?: string; headers?: Record<string, string> },
 ): Promise<ProxyResult<T>> {
-  const url = `${CHECKOUT_BASE}/${encodeURIComponent(kind)}/${path.replace(/^\//, "")}`;
+  const backendUrl = getBackendUrl(kind);
+  if (!backendUrl) {
+    // If no backend configured, transparently fall back to demo mode
+    return { ok: false, demo: true, httpStatus: 503 };
+  }
+
+  const url = `${backendUrl.replace(/\/$/, "")}/checkout/${path.replace(/^\//, "")}`;
   try {
+    const headers: Record<string, string> = { "content-type": "application/json", ...(init?.headers || {}) };
+    if (kind === 'omnicart') {
+      const pubKey = import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY;
+      if (pubKey) {
+        headers['x-publishable-api-key'] = pubKey;
+      }
+    }
+
     const res = await fetch(url, {
       method: init?.method ?? "POST",
-      headers: { "content-type": "application/json", ...(init?.headers || {}) },
+      headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & {

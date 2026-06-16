@@ -12,11 +12,20 @@
  */
 import Medusa from "@medusajs/medusa-js";
 
-// The OmniCart client points at our same-origin Worker proxy, which forwards
-// to the configured OmniCart (Medusa) backend. This keeps secrets server-side.
+const isBrowser = typeof window !== 'undefined';
+export const OMNICART_BACKEND_URL = (isBrowser && (window as any).VITE_OMNICART_BACKEND_URL) || 
+  import.meta.env.VITE_OMNICART_BACKEND_URL || 
+  "https://demo.omnicart.commerce";
+
+export const OMNICART_PUBLISHABLE_KEY = (isBrowser && (window as any).VITE_OMNICART_PUBLISHABLE_KEY) ||
+  import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY ||
+  "";
+
+// The OmniCart client points directly to the configured OmniCart (Medusa) backend.
 export const omnicart = new Medusa({
-  baseUrl: "/api/omnicart",
+  baseUrl: OMNICART_BACKEND_URL,
   maxRetries: 2,
+  publishableKey: OMNICART_PUBLISHABLE_KEY,
 });
 
 /** OmniCart cart shape (subset of the framework cart we rely on in the UI). */
@@ -178,9 +187,14 @@ export interface DiscountResult {
  */
 export async function applyDiscount(cartId: string, code: string): Promise<DiscountResult> {
   try {
-    const res = await fetch(`/api/omnicart/carts/${encodeURIComponent(cartId)}/promotions`, {
+    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}/store/carts/${encodeURIComponent(cartId)}/promotions`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (OMNICART_PUBLISHABLE_KEY) {
+      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
+    }
+    const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ promo_codes: [code] }),
     });
     const json = (await res.json().catch(() => ({}))) as {
@@ -205,9 +219,14 @@ export async function applyDiscount(cartId: string, code: string): Promise<Disco
  */
 export async function removeDiscount(cartId: string, code: string): Promise<DiscountResult> {
   try {
-    const res = await fetch(`/api/omnicart/carts/${encodeURIComponent(cartId)}/promotions`, {
+    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}/store/carts/${encodeURIComponent(cartId)}/promotions`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (OMNICART_PUBLISHABLE_KEY) {
+      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
+    }
+    const res = await fetch(url, {
       method: "DELETE",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify({ promo_codes: [code] }),
     });
     const json = (await res.json().catch(() => ({}))) as {
@@ -265,7 +284,6 @@ export interface BackendResult<T> {
   error?: string;
 }
 
-const OMNI_BASE = "/api/omnicart";
 const seg = (s: string) => encodeURIComponent(s);
 
 /**
@@ -280,17 +298,27 @@ async function omniRequest<T>(
   fallbackError: string,
 ): Promise<BackendResult<T>> {
   try {
-    const res = await fetch(`${OMNI_BASE}${path}`, {
+    const cleanPath = path.startsWith('/store') ? path : `/store${path}`;
+    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}${cleanPath}`;
+    
+    const headers: Record<string, string> = { 
+      "content-type": "application/json", 
+      ...(init.headers || {}) 
+    };
+    if (OMNICART_PUBLISHABLE_KEY) {
+      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
+    }
+
+    const res = await fetch(url, {
       ...init,
-      headers: { "content-type": "application/json", ...(init.headers || {}) },
+      headers,
     });
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
       demo?: boolean;
       message?: string;
       error?: string | { message?: string };
     };
-    // No backend wired: the proxy returns 503 { demo: true }. Signal the caller
-    // to use its demo fallback instead of surfacing an error.
+    // No backend wired: the backend returns 503 or we fallback if empty.
     if (res.status === 503 && json.demo) return { ok: false, demo: true };
     if (!res.ok) {
       const errMsg =
@@ -482,9 +510,14 @@ export interface CompleteResult {
  */
 export async function completeCart(cartId: string): Promise<CompleteResult> {
   try {
-    const res = await fetch(`${OMNI_BASE}/carts/${seg(cartId)}/complete`, {
+    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}/store/carts/${seg(cartId)}/complete`;
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (OMNICART_PUBLISHABLE_KEY) {
+      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
+    }
+    const res = await fetch(url, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
     });
     const json = (await res.json().catch(() => ({}))) as {
       type?: "order" | "cart";

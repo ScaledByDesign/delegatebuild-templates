@@ -1,0 +1,33 @@
+export const COLLECTION_ORDERING: Record<string, string[]> = {
+  products: [
+    "vnsh-holster",
+    "the-vnsh-holster-weapon-mounted-light-compatible",
+    "vnsh-holster-lite",
+    "vnsh-waist-belt-extender",
+    "vnsh-mag-mate",
+    "vnsh-side-mag-pouch-1",
+    "vnsh-laser-strike-training-system",
+    "vnsh-laser-strike-enhanced-training-system",
+    "vnsh-digital-steel-laser-target",
+    "vnsh-quick-lock",
+    "vnsh-range-bag",
+  ],
+  accessories: [
+    "american-flag-magnet",
+    "vnsh-splatter-targets",
+    "vnsh-dry-fire-snap-caps-3-pack",
+  ],
+  "vnsh-holsters-apparel-and-gifts": [
+    "this-we-will-defend-shirt",
+    "join-or-die-shirt",
+    "liberty-for-all-shirt",
+    "pray-shirt",
+    "bigfoot-shirt",
+    "battle-shirt",
+    "hope-shirt",
+    "zombie-shirt",
+    "psychedelic-shirt",
+    "ftaf-shirt",
+    "camo-shirt",
+  ],
+}
