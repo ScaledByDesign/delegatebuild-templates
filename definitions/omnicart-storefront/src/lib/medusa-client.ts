@@ -30,7 +30,7 @@ console.log('OmniCart Backend URL Decision:', {
   hostname: isBrowser ? window.location.hostname : 'N/A'
 })
 
-const OMNICART_BACKEND_URL = explicitBackendUrl || (isBrowser ? '/api/omnicart' : 'https://vnsh.omnicart.cc');
+const OMNICART_BACKEND_URL = isBrowser ? '/api/omnicart' : (explicitBackendUrl || 'https://vnsh.omnicart.cc');
 
 const OMNICART_PUBLISHABLE_KEY =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
