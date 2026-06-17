@@ -335,8 +335,8 @@ export const FULFILLMENT_CONFIG = {
   REGION_ID: OMNICART_REGION_ID,
   LOCATION_ID: OMNICART_INVENTORY_LOCATION_ID,
   SALES_CHANNEL_ID: OMNICART_SALES_CHANNEL_ID,
-  ADMIN_TOKEN: (typeof process !== 'undefined' && process.env?.MEDUSA_ADMIN_TOKEN) || '',
-  ADMIN_URL: (typeof process !== 'undefined' && process.env?.MEDUSA_ADMIN_URL) || OMNICART_BACKEND_URL
+  ADMIN_TOKEN: (typeof process !== 'undefined' && (process.env?.OMNICART_ADMIN_TOKEN || process.env?.MEDUSA_ADMIN_TOKEN)) || '',
+  ADMIN_URL: (typeof process !== 'undefined' && (process.env?.OMNICART_ADMIN_URL || process.env?.MEDUSA_ADMIN_URL)) || OMNICART_BACKEND_URL
 }
 
 export default {

@@ -43,6 +43,18 @@ function ensure(value: string | undefined, name: string): string {
   return value
 }
 
+/**
+ * Resolve an env value by trying canonical OMNICART_* names first and falling
+ * back to legacy MEDUSA_* names for backward compatibility.
+ */
+function pick(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = env[name]
+    if (value !== undefined && value !== "") return value
+  }
+  return undefined
+}
+
 export type ShopifyDataSource = "admin-api" | "public-json"
 
 export interface ShopifyMedusaConfig {
@@ -66,9 +78,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyMedusaC
   hydrateEnv(env)
 
   const shopifyDomain = ensure(env.SHOPIFY_STORE_DOMAIN, "SHOPIFY_STORE_DOMAIN")
-  const medusaAdminUrl = ensure(env.MEDUSA_ADMIN_URL, "MEDUSA_ADMIN_URL")
-  const medusaAdminToken = ensure(env.MEDUSA_ADMIN_TOKEN, "MEDUSA_ADMIN_TOKEN")
-  const medusaDefaultRegionId = ensure(env.MEDUSA_DEFAULT_REGION_ID, "MEDUSA_DEFAULT_REGION_ID")
+  const medusaAdminUrl = ensure(pick(env, "OMNICART_ADMIN_URL", "MEDUSA_ADMIN_URL"), "OMNICART_ADMIN_URL")
+  const medusaAdminToken = ensure(pick(env, "OMNICART_ADMIN_TOKEN", "MEDUSA_ADMIN_TOKEN"), "OMNICART_ADMIN_TOKEN")
+  const medusaDefaultRegionId = ensure(pick(env, "OMNICART_REGION_ID", "OMNICART_DEFAULT_REGION_ID", "MEDUSA_DEFAULT_REGION_ID"), "OMNICART_REGION_ID")
 
   const requestedSource = (env.SHOPIFY_DATA_SOURCE as ShopifyDataSource | undefined) ??
     (env.SHOPIFY_ACCESS_TOKEN ? "admin-api" : "public-json")
@@ -77,9 +89,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyMedusaC
     throw new Error("SHOPIFY_ACCESS_TOKEN is required when SHOPIFY_DATA_SOURCE=admin-api")
   }
 
-  const timeoutMs = env.SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS
-    ? Number.parseInt(env.SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS, 10)
-    : DEFAULT_TIMEOUT
+  const timeoutRaw = pick(env, "SHOPIFY_OMNICART_REQUEST_TIMEOUT_MS", "SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS")
+  const timeoutMs = timeoutRaw ? Number.parseInt(timeoutRaw, 10) : DEFAULT_TIMEOUT
 
   return {
     shopifyDomain: shopifyDomain.replace(/\/$/, ""),
@@ -87,12 +98,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyMedusaC
     medusaAdminUrl: medusaAdminUrl.replace(/\/$/, ""),
     medusaAdminToken,
     medusaDefaultRegionId,
-    medusaDefaultCollectionFallback: env.MEDUSA_DEFAULT_COLLECTION_FALLBACK,
-    medusaInventoryLocationId: env.MEDUSA_INVENTORY_LOCATION_ID,
-    medusaSalesChannelId: env.MEDUSA_SALES_CHANNEL_ID,
+    medusaDefaultCollectionFallback: pick(env, "OMNICART_DEFAULT_COLLECTION_FALLBACK", "MEDUSA_DEFAULT_COLLECTION_FALLBACK"),
+    medusaInventoryLocationId: pick(env, "OMNICART_INVENTORY_LOCATION_ID", "MEDUSA_INVENTORY_LOCATION_ID"),
+    medusaSalesChannelId: pick(env, "OMNICART_SALES_CHANNEL_ID", "MEDUSA_SALES_CHANNEL_ID"),
     requestTimeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT,
     dataSource: requestedSource,
     collectionHandle: env.SHOPIFY_COLLECTION_HANDLE || "all",
-    medusaSalesChannelName: env.MEDUSA_SALES_CHANNEL_NAME,
+    medusaSalesChannelName: pick(env, "OMNICART_SALES_CHANNEL_NAME", "MEDUSA_SALES_CHANNEL_NAME"),
   }
 }

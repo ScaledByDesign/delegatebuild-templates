@@ -43,6 +43,18 @@ function ensure(value: string | undefined, name: string): string {
   return value
 }
 
+/**
+ * Resolve an env value by trying canonical OMNICART_* names first and falling
+ * back to legacy MEDUSA_* names for backward compatibility.
+ */
+function pick(env: NodeJS.ProcessEnv, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = env[name]
+    if (value !== undefined && value !== "") return value
+  }
+  return undefined
+}
+
 export type KonnektiveDataSource = "api" | "webhook"
 
 export interface KonnektiveMedusaConfig {
@@ -78,15 +90,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveMedu
   const konnektiveApiUrl = ensure(env.KONNEKTIVE_API_URL, "KONNEKTIVE_API_URL")
   const konnektiveLoginId = ensure(env.KONNEKTIVE_LOGIN_ID, "KONNEKTIVE_LOGIN_ID")
   const konnektivePassword = ensure(env.KONNEKTIVE_PASSWORD, "KONNEKTIVE_PASSWORD")
-  const medusaAdminUrl = ensure(env.MEDUSA_ADMIN_URL, "MEDUSA_ADMIN_URL")
-  const medusaAdminToken = ensure(env.MEDUSA_ADMIN_TOKEN, "MEDUSA_ADMIN_TOKEN")
-  const medusaDefaultRegionId = ensure(env.MEDUSA_DEFAULT_REGION_ID, "MEDUSA_DEFAULT_REGION_ID")
+  const medusaAdminUrl = ensure(pick(env, "OMNICART_ADMIN_URL", "MEDUSA_ADMIN_URL"), "OMNICART_ADMIN_URL")
+  const medusaAdminToken = ensure(pick(env, "OMNICART_ADMIN_TOKEN", "MEDUSA_ADMIN_TOKEN"), "OMNICART_ADMIN_TOKEN")
+  const medusaDefaultRegionId = ensure(pick(env, "OMNICART_REGION_ID", "OMNICART_DEFAULT_REGION_ID", "MEDUSA_DEFAULT_REGION_ID"), "OMNICART_REGION_ID")
 
   const requestedSource = (env.KONNEKTIVE_DATA_SOURCE as KonnektiveDataSource | undefined) ?? "api"
 
-  const timeoutMs = env.KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS
-    ? Number.parseInt(env.KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS, 10)
-    : DEFAULT_TIMEOUT
+  const timeoutRaw = pick(env, "KONNEKTIVE_OMNICART_REQUEST_TIMEOUT_MS", "KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS")
+  const timeoutMs = timeoutRaw ? Number.parseInt(timeoutRaw, 10) : DEFAULT_TIMEOUT
 
   const batchSize = env.KONNEKTIVE_BATCH_SIZE
     ? Number.parseInt(env.KONNEKTIVE_BATCH_SIZE, 10)
@@ -110,12 +121,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveMedu
     medusaAdminUrl: medusaAdminUrl.replace(/\/$/, ""),
     medusaAdminToken,
     medusaDefaultRegionId,
-    medusaDefaultCollectionFallback: env.MEDUSA_DEFAULT_COLLECTION_FALLBACK,
-    medusaInventoryLocationId: env.MEDUSA_INVENTORY_LOCATION_ID,
-    medusaSalesChannelId: env.MEDUSA_SALES_CHANNEL_ID,
+    medusaDefaultCollectionFallback: pick(env, "OMNICART_DEFAULT_COLLECTION_FALLBACK", "MEDUSA_DEFAULT_COLLECTION_FALLBACK"),
+    medusaInventoryLocationId: pick(env, "OMNICART_INVENTORY_LOCATION_ID", "MEDUSA_INVENTORY_LOCATION_ID"),
+    medusaSalesChannelId: pick(env, "OMNICART_SALES_CHANNEL_ID", "MEDUSA_SALES_CHANNEL_ID"),
     requestTimeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT,
     dataSource: requestedSource,
-    medusaSalesChannelName: env.MEDUSA_SALES_CHANNEL_NAME,
+    medusaSalesChannelName: pick(env, "OMNICART_SALES_CHANNEL_NAME", "MEDUSA_SALES_CHANNEL_NAME"),
     enableWebhooks: env.KONNEKTIVE_ENABLE_WEBHOOKS === "true",
     webhookSecret: env.KONNEKTIVE_WEBHOOK_SECRET,
     syncMode,
