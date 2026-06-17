@@ -91,10 +91,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveOmni
 
   const requestedSource = (env.KONNEKTIVE_DATA_SOURCE as KonnektiveDataSource | undefined) ?? "api"
 
-  // OmniCart is canonical; the legacy KONNEKTIVE_MEDUSA_* name is read as a
-  // back-compat fallback for older deploys.
   const timeoutOverride =
-    env.KONNEKTIVE_OMNICART_REQUEST_TIMEOUT_MS ?? env.KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS
+    env.KONNEKTIVE_OMNICART_REQUEST_TIMEOUT_MS
   const timeoutMs = timeoutOverride
     ? Number.parseInt(timeoutOverride, 10)
     : DEFAULT_TIMEOUT

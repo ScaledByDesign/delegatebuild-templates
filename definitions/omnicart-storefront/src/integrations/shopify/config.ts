@@ -84,10 +84,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicar
     throw new Error("SHOPIFY_ACCESS_TOKEN is required when SHOPIFY_DATA_SOURCE=admin-api")
   }
 
-  // OmniCart is canonical; the legacy SHOPIFY_MEDUSA_* name is read as a
-  // back-compat fallback for older deploys.
   const timeoutOverride =
-    env.SHOPIFY_OMNICART_REQUEST_TIMEOUT_MS ?? env.SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS
+    env.SHOPIFY_OMNICART_REQUEST_TIMEOUT_MS
   const timeoutMs = timeoutOverride
     ? Number.parseInt(timeoutOverride, 10)
     : DEFAULT_TIMEOUT
