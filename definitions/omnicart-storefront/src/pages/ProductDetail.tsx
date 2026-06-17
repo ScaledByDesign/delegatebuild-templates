@@ -39,9 +39,9 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { getProductContent } from "@/lib/content/productContent";
 import {
   getProductByHandle,
-  MedusaProduct,
-  MedusaProductVariant,
-} from "@/services/medusa/products";
+  OmnicartProduct,
+  OmnicartProductVariant,
+} from "@/services/omnicart/products";
 import { trackProductView } from "@/hooks/useTracking";
 import { transformCdnUrl } from "@/lib/util/image-url";
 import { sortProductOptions } from "@/lib/util/product-utils";
@@ -54,13 +54,13 @@ import {
 
 /** Separate component so hooks run unconditionally (not after early returns) */
 function ProductSeo({ product, selectedVariant, productContent }: {
-  product: MedusaProduct
-  selectedVariant?: MedusaProductVariant
+  product: OmnicartProduct
+  selectedVariant?: OmnicartProductVariant
   productContent: import("@/lib/content/productContent").ProductContent
 }) {
   const { data: reviewSummary } = useQuery({
     queryKey: ['product-review-summary-seo', product.id],
-    queryFn: () => import('@/services/medusa/reviews').then(m => m.getProductReviewSummary(product.id)),
+    queryFn: () => import('@/services/omnicart/reviews').then(m => m.getProductReviewSummary(product.id)),
     enabled: !!product.id,
     staleTime: 10 * 60 * 1000,
   });
@@ -110,7 +110,7 @@ const currencyFormatter = (amount?: number, currencyCode = "USD") => {
   }).format(amount);
 };
 
-const isVariantAvailable = (variant?: MedusaProductVariant) => {
+const isVariantAvailable = (variant?: OmnicartProductVariant) => {
   if (!variant) return false;
   if (!variant.manage_inventory) return true;
   // Check actual inventory quantity first
@@ -127,7 +127,7 @@ const isVariantAvailable = (variant?: MedusaProductVariant) => {
  * Check if product has meaningful variations or just a default variant
  * Returns true if product should show options/variations UI
  */
-const hasProductVariations = (product?: MedusaProduct) => {
+const hasProductVariations = (product?: OmnicartProduct) => {
   if (!product?.variants?.length) return false;
 
   // If product has multiple variants, it has variations
@@ -204,7 +204,7 @@ const ProductDetail: React.FC = () => {
     data: product,
     isLoading,
     error,
-  } = useQuery<MedusaProduct | null>({
+  } = useQuery<OmnicartProduct | null>({
     queryKey: ["product", handle],
     enabled: Boolean(handle),
     staleTime: 5 * 60 * 1000,

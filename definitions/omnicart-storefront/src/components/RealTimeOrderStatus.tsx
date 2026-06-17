@@ -15,7 +15,7 @@ import {
   getOrderActions,
   type RealTimeOrderStatus as OrderStatusType,
   type OrderNotification
-} from '@/services/medusa/orderStatus';
+} from '@/services/omnicart/orderStatus';
 
 interface RealTimeOrderStatusProps {
   orderId: string;

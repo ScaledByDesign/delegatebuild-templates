@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getStarRating } from '@/services/medusa/reviews';
+import { getStarRating } from '@/services/omnicart/reviews';
 
 interface StarRatingProps {
   rating: number;

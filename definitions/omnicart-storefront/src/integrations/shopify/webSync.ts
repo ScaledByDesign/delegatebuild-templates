@@ -1,8 +1,8 @@
 // @ts-nocheck
 import { resolve } from "node:path"
-import { loadConfig, ShopifyMedusaConfig } from "./config.ts"
+import { loadConfig, ShopifyOmnicartConfig } from "./config.ts"
 import { ShopifyWebScraper, type ScrapedProduct } from "./webScraper"
-import { MedusaAdminClient, type MedusaCollection, type MedusaInventoryItem, type MedusaProduct } from "./medusaAdminClient"
+import { OmnicartAdminClient, type OmnicartCollection, type OmnicartInventoryItem, type OmnicartProduct } from "./omnicartAdminClient"
 import { DEFAULT_INVENTORY_QUANTITY, buildProductUpsertPayloadFromScrape, buildVariantUpsertPayloadFromScrape } from "./mappers"
 
 interface WebSyncArgs {
@@ -23,7 +23,7 @@ interface WebSyncSummary {
 }
 
 let cachedInventoryLocationIds: string[] | null = null
-const inventoryItemBySkuCache = new Map<string, MedusaInventoryItem | null>()
+const inventoryItemBySkuCache = new Map<string, OmnicartInventoryItem | null>()
 
 function normalizeSku(sku?: string | null): string | null {
   if (!sku) return null
@@ -38,7 +38,7 @@ export async function runWebSync(rawArgs: string[] = process.argv.slice(2)) {
 
 
   const scraper = new ShopifyWebScraper(config)
-  const medusaClient = new MedusaAdminClient(config)
+  const omnicartClient = new OmnicartAdminClient(config)
 
   const summary: WebSyncSummary = {
     processed: 0,
@@ -52,7 +52,7 @@ export async function runWebSync(rawArgs: string[] = process.argv.slice(2)) {
 
   console.log(`Starting Shopify web scraping sync (mode=${args.mode}, dryRun=${args.dryRun})`)
 
-  const collectionCache = await bootstrapCollections(medusaClient)
+  const collectionCache = await bootstrapCollections(omnicartClient)
 
   let products: ScrapedProduct[] = []
 
@@ -63,7 +63,7 @@ export async function runWebSync(rawArgs: string[] = process.argv.slice(2)) {
 
     // Ensure collection exists in Medusa
     await ensureCollection({
-      medusaClient,
+      omnicartClient,
       cache: collectionCache,
       handle: collection.handle,
       title: collection.title,
@@ -102,7 +102,7 @@ export async function runWebSync(rawArgs: string[] = process.argv.slice(2)) {
     try {
       await syncScrapedProduct({
         scrapedProduct: product,
-        medusaClient,
+        omnicartClient,
         collectionCache,
         dryRun: args.dryRun,
         summary,
@@ -172,8 +172,8 @@ async function assignProductCollection(params: {
   createPayload: Record<string, unknown>
   updatePayload: Record<string, unknown>
   collectionHandle?: string
-  medusaClient: MedusaAdminClient
-  collectionCache: Map<string, MedusaCollection>
+  omnicartClient: OmnicartAdminClient
+  collectionCache: Map<string, OmnicartCollection>
   dryRun: boolean
 }): Promise<void> {
   const {
@@ -181,7 +181,7 @@ async function assignProductCollection(params: {
     createPayload,
     updatePayload,
     collectionHandle,
-    medusaClient,
+    omnicartClient,
     collectionCache,
     dryRun,
   } = params
@@ -215,7 +215,7 @@ async function assignProductCollection(params: {
 
     if (!medusaCollection) {
       const collectionId = await ensureCollection({
-        medusaClient,
+        omnicartClient,
         cache: collectionCache,
         handle: candidate.handle,
         title: candidate.title ?? candidate.handle,
@@ -245,14 +245,14 @@ async function assignProductCollection(params: {
 }
 
 async function resolveInventoryLocationIds(params: {
-  medusaClient: MedusaAdminClient
-  config: ShopifyMedusaConfig
+  omnicartClient: OmnicartAdminClient
+  config: ShopifyOmnicartConfig
 }): Promise<string[]> {
   if (cachedInventoryLocationIds && cachedInventoryLocationIds.length > 0) {
     return cachedInventoryLocationIds
   }
 
-  const { medusaClient, config } = params
+  const { omnicartClient, config } = params
 
   const explicitIds = config.medusaInventoryLocationId
     ?.split(",")
@@ -265,7 +265,7 @@ async function resolveInventoryLocationIds(params: {
   }
 
   try {
-    const locations = await medusaClient.listStockLocations()
+    const locations = await omnicartClient.listStockLocations()
     cachedInventoryLocationIds = locations.map(location => location.id)
   } catch (error) {
     console.warn("Failed to load Medusa stock locations for inventory assignment:", error)
@@ -276,10 +276,10 @@ async function resolveInventoryLocationIds(params: {
 }
 
 async function findInventoryItemBySku(params: {
-  medusaClient: MedusaAdminClient
+  omnicartClient: OmnicartAdminClient
   sku?: string | null
-}): Promise<MedusaInventoryItem | null> {
-  const { medusaClient, sku } = params
+}): Promise<OmnicartInventoryItem | null> {
+  const { omnicartClient, sku } = params
   const normalized = normalizeSku(sku)
   if (!normalized) return null
 
@@ -291,7 +291,7 @@ async function findInventoryItemBySku(params: {
   let offset = 0
 
   while (true) {
-    const inventoryItems = await medusaClient.listInventoryItems({ limit: pageSize, offset })
+    const inventoryItems = await omnicartClient.listInventoryItems({ limit: pageSize, offset })
     if (!inventoryItems.length) {
       break
     }
@@ -315,14 +315,14 @@ async function findInventoryItemBySku(params: {
 }
 
 async function ensureProductInventoryLevels(params: {
-  medusaProduct: MedusaProduct
-  medusaClient: MedusaAdminClient
-  config: ShopifyMedusaConfig
+  medusaProduct: OmnicartProduct
+  omnicartClient: OmnicartAdminClient
+  config: ShopifyOmnicartConfig
   quantity: number
 }): Promise<void> {
-  const { medusaProduct, medusaClient, config, quantity } = params
+  const { medusaProduct, omnicartClient, config, quantity } = params
 
-  const locationIds = await resolveInventoryLocationIds({ medusaClient, config })
+  const locationIds = await resolveInventoryLocationIds({ omnicartClient, config })
 
   if (!locationIds.length) {
     console.warn(
@@ -333,14 +333,14 @@ async function ensureProductInventoryLevels(params: {
 
   for (const variant of medusaProduct.variants) {
     try {
-      let inventoryItem: MedusaInventoryItem | null = null
+      let inventoryItem: OmnicartInventoryItem | null = null
 
       if (variant.sku) {
-        inventoryItem = await findInventoryItemBySku({ medusaClient, sku: variant.sku })
+        inventoryItem = await findInventoryItemBySku({ omnicartClient, sku: variant.sku })
       }
 
       if (!inventoryItem) {
-        const created = await medusaClient.createInventoryItem({
+        const created = await omnicartClient.createInventoryItem({
           sku: variant.sku ?? undefined,
           title: variant.title || medusaProduct.title,
           description: `Inventory item for variant ${variant.id}`,
@@ -361,7 +361,7 @@ async function ensureProductInventoryLevels(params: {
 
       if (variant.sku) {
         try {
-          await medusaClient.updateVariant(medusaProduct.id, variant.id, {
+          await omnicartClient.updateVariant(medusaProduct.id, variant.id, {
             inventory_items: [
               {
                 inventory_item_id: inventoryItem.id,
@@ -378,7 +378,7 @@ async function ensureProductInventoryLevels(params: {
       }
 
       for (const locationId of locationIds) {
-        await medusaClient.updateInventoryLevel(inventoryItem.id, locationId, quantity)
+        await omnicartClient.updateInventoryLevel(inventoryItem.id, locationId, quantity)
       }
     } catch (error) {
       console.error(
@@ -391,17 +391,17 @@ async function ensureProductInventoryLevels(params: {
 
 async function syncScrapedProduct(params: {
   scrapedProduct: ScrapedProduct
-  medusaClient: MedusaAdminClient
-  collectionCache: Map<string, MedusaCollection>
+  omnicartClient: OmnicartAdminClient
+  collectionCache: Map<string, OmnicartCollection>
   dryRun: boolean
   summary: WebSyncSummary
   collectionHandle?: string
-  config: ShopifyMedusaConfig
+  config: ShopifyOmnicartConfig
 }) {
-  const { scrapedProduct, medusaClient, collectionCache, dryRun, summary, collectionHandle, config } = params
+  const { scrapedProduct, omnicartClient, collectionCache, dryRun, summary, collectionHandle, config } = params
 
   // Find existing product by Shopify ID
-  const existingProducts = await medusaClient.listProductsByShopifyId(scrapedProduct.id)
+  const existingProducts = await omnicartClient.listProductsByShopifyId(scrapedProduct.id)
   let medusaProduct = existingProducts[0]
 
   console.log(`[DEBUG] Looking for existing product with Shopify ID: ${scrapedProduct.id}`)
@@ -411,7 +411,7 @@ async function syncScrapedProduct(params: {
   if (!medusaProduct && scrapedProduct.variants.length > 0) {
     const firstVariantSku = scrapedProduct.variants[0].sku
     if (firstVariantSku) {
-      const allProducts = await medusaClient.listProducts(300, 0)
+      const allProducts = await omnicartClient.listProducts(300, 0)
       const skuMatch = allProducts.find(p =>
         p.variants.some(v => v.sku === firstVariantSku || v.sku === `${firstVariantSku}-shopify`)
       )
@@ -427,7 +427,7 @@ async function syncScrapedProduct(params: {
 
   // If still no product found, try to find by handle (fallback)
   if (!medusaProduct) {
-    const allProducts = await medusaClient.listProducts(300, 0)
+    const allProducts = await omnicartClient.listProducts(300, 0)
     const handleMatch = allProducts.find(p =>
       p.handle === scrapedProduct.handle
     )
@@ -446,7 +446,7 @@ async function syncScrapedProduct(params: {
   // Check if we need to skip handle updates to avoid conflicts
   let skipHandleUpdate = false
   if (medusaProduct && medusaProduct.handle !== scrapedProduct.handle) {
-    const allProducts = await medusaClient.listProducts(300, 0)
+    const allProducts = await omnicartClient.listProducts(300, 0)
     const handleConflict = allProducts.find(p =>
       p.handle === scrapedProduct.handle &&
       p.id !== medusaProduct.id
@@ -469,14 +469,14 @@ async function syncScrapedProduct(params: {
     createPayload,
     updatePayload,
     collectionHandle,
-    medusaClient,
+    omnicartClient,
     collectionCache,
     dryRun,
   })
 
   if (!medusaProduct) {
     // Check for handle conflicts with existing products
-    const allProducts = await medusaClient.listProducts(100, 0) // Get first 100 products
+    const allProducts = await omnicartClient.listProducts(100, 0) // Get first 100 products
     console.log(`[DEBUG] Checking handle "${scrapedProduct.handle}" against ${allProducts.length} existing products`)
 
     const handleConflict = allProducts.find(p => {
@@ -502,7 +502,7 @@ async function syncScrapedProduct(params: {
       return
     }
 
-    medusaProduct = await medusaClient.createProduct({
+    medusaProduct = await omnicartClient.createProduct({
       ...createPayload,
       metadata: {
         ...createPayload.metadata,
@@ -518,24 +518,24 @@ async function syncScrapedProduct(params: {
       return
     }
 
-    medusaProduct = await medusaClient.updateProduct(medusaProduct.id, updatePayload)
+    medusaProduct = await omnicartClient.updateProduct(medusaProduct.id, updatePayload)
     summary.updated += 1
     console.log(`Updated product: ${medusaProduct.title}`)
   }
 
   // Refresh product data
-  medusaProduct = await medusaClient.retrieveProduct(medusaProduct.id)
+  medusaProduct = await omnicartClient.retrieveProduct(medusaProduct.id)
 
   // Update product options to match Shopify exactly
   await syncProductOptions({
     scrapedProduct,
     medusaProduct,
-    medusaClient,
+    omnicartClient,
     dryRun,
   })
 
   // Refresh again after options
-  medusaProduct = await medusaClient.retrieveProduct(medusaProduct.id)
+  medusaProduct = await omnicartClient.retrieveProduct(medusaProduct.id)
 
   console.log("Refreshed product options:")
   medusaProduct.options.forEach(option => {
@@ -554,7 +554,7 @@ async function syncScrapedProduct(params: {
     } else {
       console.log(`Adding product to sales channel ${config.medusaSalesChannelId}`)
       try {
-        await medusaClient.addProductToSalesChannel(medusaProduct.id, config.medusaSalesChannelId)
+        await omnicartClient.addProductToSalesChannel(medusaProduct.id, config.medusaSalesChannelId)
       } catch (error) {
         console.log(`Sales channel assignment failed (may already be assigned):`, error.message)
       }
@@ -566,18 +566,18 @@ async function syncScrapedProduct(params: {
   await syncScrapedVariants({
     scrapedProduct,
     medusaProduct,
-    medusaClient,
+    omnicartClient,
     dryRun,
     summary,
   })
 
   // Refresh again after variants
-  medusaProduct = await medusaClient.retrieveProduct(medusaProduct.id)
+  medusaProduct = await omnicartClient.retrieveProduct(medusaProduct.id)
 
   if (!dryRun) {
     await ensureProductInventoryLevels({
       medusaProduct,
-      medusaClient,
+      omnicartClient,
       config,
       quantity: DEFAULT_INVENTORY_QUANTITY,
     })
@@ -587,7 +587,7 @@ async function syncScrapedProduct(params: {
   await syncScrapedImages({
     scrapedProduct,
     medusaProduct,
-    medusaClient,
+    omnicartClient,
     dryRun,
     summary,
   })
@@ -595,11 +595,11 @@ async function syncScrapedProduct(params: {
 
 async function syncProductOptions(params: {
   scrapedProduct: ScrapedProduct
-  medusaProduct: MedusaProduct
-  medusaClient: MedusaAdminClient
+  medusaProduct: OmnicartProduct
+  omnicartClient: OmnicartAdminClient
   dryRun: boolean
 }) {
-  const { scrapedProduct, medusaProduct, medusaClient, dryRun } = params
+  const { scrapedProduct, medusaProduct, omnicartClient, dryRun } = params
 
   // Get current Medusa options
   const currentOptions = medusaProduct.options || []
@@ -634,7 +634,7 @@ async function syncProductOptions(params: {
       console.log(`[dry-run] would delete option "${medusaOption.title}"`)
     } else {
       console.log(`Deleting option "${medusaOption.title}"`)
-      await medusaClient.deleteProductOption(medusaProduct.id, medusaOption.id)
+      await omnicartClient.deleteProductOption(medusaProduct.id, medusaOption.id)
     }
   }
 
@@ -644,7 +644,7 @@ async function syncProductOptions(params: {
       console.log(`[dry-run] would create option "${shopifyOption.name}" with values [${shopifyOption.values.join(", ")}]`)
     } else {
       console.log(`Creating option "${shopifyOption.name}" with values [${shopifyOption.values.join(", ")}]`)
-      await medusaClient.createProductOption(medusaProduct.id, {
+      await omnicartClient.createProductOption(medusaProduct.id, {
         title: shopifyOption.name,
         values: shopifyOption.values
       })
@@ -656,7 +656,7 @@ async function syncProductOptions(params: {
     // Add a small delay to ensure options are fully created
     await new Promise(resolve => setTimeout(resolve, 1000))
 
-    const updatedProduct = await medusaClient.retrieveProduct(medusaProduct.id)
+    const updatedProduct = await omnicartClient.retrieveProduct(medusaProduct.id)
     Object.assign(medusaProduct, updatedProduct)
 
     console.log(`Refreshed product options:`)
@@ -668,12 +668,12 @@ async function syncProductOptions(params: {
 
 async function syncScrapedVariants(params: {
   scrapedProduct: ScrapedProduct
-  medusaProduct: MedusaProduct
-  medusaClient: MedusaAdminClient
+  medusaProduct: OmnicartProduct
+  omnicartClient: OmnicartAdminClient
   dryRun: boolean
   summary: WebSyncSummary
 }) {
-  const { scrapedProduct, medusaProduct, medusaClient, dryRun, summary } = params
+  const { scrapedProduct, medusaProduct, omnicartClient, dryRun, summary } = params
 
   // Generate variant inputs using the refreshed product data with updated options
   const variantInputs = buildVariantUpsertPayloadFromScrape(scrapedProduct, medusaProduct)
@@ -687,7 +687,7 @@ async function syncScrapedVariants(params: {
         console.log(`[dry-run] would update variant ${variant.variantId}: ${variant.payload.title}`)
       } else {
         console.log(`Updating existing variant: ${variant.payload.title}`)
-        await medusaClient.updateVariant(variant.productId, variant.variantId, variant.payload)
+        await omnicartClient.updateVariant(variant.productId, variant.variantId, variant.payload)
         summary.variantUpdated += 1
       }
     } else {
@@ -703,7 +703,7 @@ async function syncScrapedVariants(params: {
           // Check for SKU conflicts before creating variant
           let sku = variant.payload.sku as string | undefined
           if (sku) {
-            const skuConflict = await checkVariantSKUConflict(medusaClient, sku, variant.productId)
+            const skuConflict = await checkVariantSKUConflict(omnicartClient, sku, variant.productId)
             if (skuConflict) {
               console.log(`⚠️  SKU conflict detected: "${sku}" already exists in product "${skuConflict.productTitle}" (${skuConflict.productId})`)
               console.log(`   Modifying SKU to avoid conflict...`)
@@ -714,7 +714,7 @@ async function syncScrapedVariants(params: {
 
           const createPayload: Record<string, unknown> = { ...variant.payload }
           const existingInventoryItem = await findInventoryItemBySku({
-            medusaClient,
+            omnicartClient,
             sku: sku,
           })
 
@@ -732,7 +732,7 @@ async function syncScrapedVariants(params: {
           let created = false
 
           try {
-            await medusaClient.createVariant(variant.productId, createPayload)
+            await omnicartClient.createVariant(variant.productId, createPayload)
             created = true
           } catch (error) {
             const normalizedSku = normalizeSku(sku)
@@ -743,7 +743,7 @@ async function syncScrapedVariants(params: {
 
             if (canRetry) {
               console.log(`Inventory item conflict detected for SKU ${sku}. Attempting to reuse existing inventory item...`)
-              const retryInventoryItem = await findInventoryItemBySku({ medusaClient, sku })
+              const retryInventoryItem = await findInventoryItemBySku({ omnicartClient, sku })
               if (retryInventoryItem) {
                 ;(createPayload as any).inventory_items = [
                   {
@@ -752,7 +752,7 @@ async function syncScrapedVariants(params: {
                   },
                 ]
 
-                await medusaClient.createVariant(variant.productId, createPayload)
+                await omnicartClient.createVariant(variant.productId, createPayload)
                 created = true
               }
             }
@@ -779,7 +779,7 @@ async function syncScrapedVariants(params: {
 }
 
 async function checkVariantSKUConflict(
-  medusaClient: MedusaAdminClient,
+  omnicartClient: OmnicartAdminClient,
   sku: string,
   currentProductId: string
 ): Promise<{ productId: string; productTitle: string } | null> {
@@ -790,7 +790,7 @@ async function checkVariantSKUConflict(
     let hasMore = true
 
     while (hasMore) {
-      const products = await medusaClient.listProducts(limit, offset)
+      const products = await omnicartClient.listProducts(limit, offset)
 
       for (const product of products) {
         // Skip the current product we're syncing to
@@ -818,7 +818,7 @@ async function checkVariantSKUConflict(
   }
 }
 
-function validateOptionValuesByTitle(product: MedusaProduct, optionMapping: Record<string, string>): boolean {
+function validateOptionValuesByTitle(product: OmnicartProduct, optionMapping: Record<string, string>): boolean {
   console.log(`[DEBUG] Validating option mapping by title:`, optionMapping)
   console.log(`[DEBUG] Available product options:`)
 
@@ -898,12 +898,12 @@ function isInventoryItemConflictError(error: unknown): boolean {
 
 async function syncScrapedImages(params: {
   scrapedProduct: ScrapedProduct
-  medusaProduct: MedusaProduct
-  medusaClient: MedusaAdminClient
+  medusaProduct: OmnicartProduct
+  omnicartClient: OmnicartAdminClient
   dryRun: boolean
   summary: WebSyncSummary
 }) {
-  const { scrapedProduct, medusaProduct, medusaClient, dryRun, summary } = params
+  const { scrapedProduct, medusaProduct, omnicartClient, dryRun, summary } = params
   const metadata = (medusaProduct.metadata as Record<string, unknown>) || {}
   const existingMap = (metadata.shopify_image_map as Record<string, string>) || {}
   const nextMap: Record<string, string> = { ...existingMap }
@@ -933,7 +933,7 @@ async function syncScrapedImages(params: {
       const urlPart = imageUrl.split("/").pop() ?? `${imageId}.jpg`
       const fileName = urlPart.split("?")[0] // Remove URL parameters like ?v=1724264851
       const mimeType = response.headers.get("content-type") ?? "image/jpeg"
-      const medusaUrl = await medusaClient.uploadImage(buffer, fileName, mimeType)
+      const medusaUrl = await omnicartClient.uploadImage(buffer, fileName, mimeType)
 
       newImageUrls.push(medusaUrl)
       nextMap[imageId] = medusaUrl
@@ -981,7 +981,7 @@ async function syncScrapedImages(params: {
 
     // Update product metadata if we have new metadata
     if (!dryRun && (newImageUrls.length > 0 || pdpSections.length > 0)) {
-      await medusaClient.updateProduct(medusaProduct.id, {
+      await omnicartClient.updateProduct(medusaProduct.id, {
         metadata: {
           ...updatedMetadata,
           shopify_image_map: nextMap,
@@ -990,7 +990,7 @@ async function syncScrapedImages(params: {
     }
   } else if (!dryRun && newImageUrls.length > 0) {
     // Standard update without marketing content
-    await medusaClient.updateProduct(medusaProduct.id, {
+    await omnicartClient.updateProduct(medusaProduct.id, {
       metadata: {
         ...metadata,
         shopify_image_map: nextMap,
@@ -1000,17 +1000,17 @@ async function syncScrapedImages(params: {
 
   // Add gallery images to product
   if (!dryRun && newImageUrls.length > 0) {
-    await medusaClient.addProductImages(medusaProduct.id, newImageUrls)
+    await omnicartClient.addProductImages(medusaProduct.id, newImageUrls)
 
     if (!medusaProduct.thumbnail && newImageUrls[0]) {
-      await medusaClient.setProductThumbnail(medusaProduct.id, newImageUrls[0])
+      await omnicartClient.setProductThumbnail(medusaProduct.id, newImageUrls[0])
     }
   }
 }
 
-async function bootstrapCollections(medusaClient: MedusaAdminClient): Promise<Map<string, MedusaCollection>> {
-  const list = await medusaClient.listCollections()
-  const cache = new Map<string, MedusaCollection>()
+async function bootstrapCollections(omnicartClient: OmnicartAdminClient): Promise<Map<string, OmnicartCollection>> {
+  const list = await omnicartClient.listCollections()
+  const cache = new Map<string, OmnicartCollection>()
   const handleAliases: Record<string, string> = {
     "apparel-gifts": "vnsh-holsters-apparel-and-gifts",
   }
@@ -1025,8 +1025,8 @@ async function bootstrapCollections(medusaClient: MedusaAdminClient): Promise<Ma
 }
 
 async function ensureCollection(params: {
-  medusaClient: MedusaAdminClient
-  cache: Map<string, MedusaCollection>
+  omnicartClient: OmnicartAdminClient
+  cache: Map<string, OmnicartCollection>
   handle: string
   title: string
   dryRun: boolean
@@ -1040,7 +1040,7 @@ async function ensureCollection(params: {
     return undefined
   }
 
-  const created = await params.medusaClient.createCollection({ 
+  const created = await params.omnicartClient.createCollection({ 
     title: params.title, 
     handle: params.handle 
   })

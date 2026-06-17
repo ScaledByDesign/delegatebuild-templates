@@ -3,7 +3,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useLoyaltyManagement, usePointsEarningRules } from '@/hooks/useLoyalty';
-import { formatPoints } from '@/services/medusa/loyalty';
+import { formatPoints } from '@/services/omnicart/loyalty';
 import LoyaltyDashboard from '@/components/LoyaltyDashboard';
 import RewardsCatalog from '@/components/RewardsCatalog';
 import PointsHistory from '@/components/PointsHistory';

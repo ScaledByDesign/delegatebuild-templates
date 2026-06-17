@@ -13,7 +13,7 @@ import * as z from 'zod';
 import { useToast } from "@/components/ui/use-toast";
 import { Card, CardContent } from '@/components/ui/card';
 import { useQuery } from '@tanstack/react-query';
-import { getProducts, MedusaProduct } from '@/services/medusa/products';
+import { getProducts, OmnicartProduct } from '@/services/omnicart/products';
 
 const quickCheckoutSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -81,7 +81,7 @@ const QuickCheckout = () => {
   });
 
   // Transform Medusa products to product options
-  const productOptions = medusaResponse?.products?.map((product: MedusaProduct) => {
+  const productOptions = medusaResponse?.products?.map((product: OmnicartProduct) => {
     const cheapestVariant = product.variants?.reduce((cheapest, variant) => {
       const variantPrice = variant.calculated_price?.calculated_amount ?? variant.prices?.[0]?.amount ?? 0;
       const cheapestPrice = cheapest?.calculated_price?.calculated_amount ?? cheapest?.prices?.[0]?.amount ?? Infinity;

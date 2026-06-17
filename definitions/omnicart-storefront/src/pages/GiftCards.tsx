@@ -17,7 +17,7 @@ import {
   formatGiftCardValue,
   isValidGiftCardCode,
   type PurchaseGiftCardRequest
-} from '@/services/medusa/giftCards';
+} from '@/services/omnicart/giftCards';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 

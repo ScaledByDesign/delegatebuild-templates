@@ -45,7 +45,7 @@ function ensure(value: string | undefined, name: string): string {
 
 export type KonnektiveDataSource = "api" | "webhook"
 
-export interface KonnektiveMedusaConfig {
+export interface KonnektiveOmnicartConfig {
   konnektiveApiUrl: string
   konnektiveLoginId: string
   konnektivePassword: string
@@ -72,7 +72,7 @@ const DEFAULT_BATCH_SIZE = 50
 const DEFAULT_RETRY_ATTEMPTS = 3
 const DEFAULT_RETRY_DELAY = 1000
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveMedusaConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveOmnicartConfig {
   hydrateEnv(env)
 
   const konnektiveApiUrl = ensure(env.KONNEKTIVE_API_URL, "KONNEKTIVE_API_URL")
@@ -111,7 +111,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveMedu
     ? Number.parseInt(env.KONNEKTIVE_RETRY_DELAY_MS, 10)
     : DEFAULT_RETRY_DELAY
 
-  const syncMode = (env.KONNEKTIVE_SYNC_MODE as KonnektiveMedusaConfig["syncMode"]) ?? "full"
+  const syncMode = (env.KONNEKTIVE_SYNC_MODE as KonnektiveOmnicartConfig["syncMode"]) ?? "full"
 
   return {
     konnektiveApiUrl: konnektiveApiUrl.replace(/\/$/, ""),

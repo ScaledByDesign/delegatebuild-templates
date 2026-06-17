@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 import { getAuthHeaders } from '@/lib/util/cookies';
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface ProductReview {
   id: string;
@@ -86,7 +86,7 @@ export const getProductReviews = async (
     if (filters.limit) params.append('limit', filters.limit.toString());
     if (filters.offset) params.append('offset', filters.offset.toString());
 
-    const response = await medusaClient.fetch(`/store/products/${productId}/reviews?${params.toString()}`);
+    const response = await omnicartClient.fetch(`/store/products/${productId}/reviews?${params.toString()}`);
     
     return {
       reviews: (response as any)?.reviews || [],
@@ -147,7 +147,7 @@ export const getProductReviews = async (
  */
 export const getProductReviewSummary = async (productId: string): Promise<ReviewSummary> => {
   try {
-    const response = await medusaClient.fetch(`/store/products/${productId}/reviews/summary`);
+    const response = await omnicartClient.fetch(`/store/products/${productId}/reviews/summary`);
     return (response as any)?.summary;
   } catch (error) {
     // Return mock summary if API not available
@@ -176,7 +176,7 @@ export const createReview = async (request: CreateReviewRequest): Promise<Produc
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch('/store/reviews', {
+    const response = await omnicartClient.fetch('/store/reviews', {
       method: 'POST',
       headers,
       body: JSON.stringify(request)
@@ -184,7 +184,7 @@ export const createReview = async (request: CreateReviewRequest): Promise<Produc
 
     return (response as any)?.review;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -201,7 +201,7 @@ export const updateReview = async (
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch(`/store/reviews/${reviewId}`, {
+    const response = await omnicartClient.fetch(`/store/reviews/${reviewId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(updates)
@@ -209,7 +209,7 @@ export const updateReview = async (
 
     return (response as any)?.review;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -220,12 +220,12 @@ export const deleteReview = async (reviewId: string): Promise<void> => {
   try {
     const headers = getAuthHeaders();
 
-    await medusaClient.fetch(`/store/reviews/${reviewId}`, {
+    await omnicartClient.fetch(`/store/reviews/${reviewId}`, {
       method: 'DELETE',
       headers
     });
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -239,12 +239,12 @@ export const markReviewHelpful = async (reviewId: string): Promise<void> => {
       'Content-Type': 'application/json'
     };
 
-    await medusaClient.fetch(`/store/reviews/${reviewId}/helpful`, {
+    await omnicartClient.fetch(`/store/reviews/${reviewId}/helpful`, {
       method: 'POST',
       headers
     });
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -255,7 +255,7 @@ export const getCustomerReviews = async (): Promise<ProductReview[]> => {
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch('/store/customers/me/reviews', {
+    const response = await omnicartClient.fetch('/store/customers/me/reviews', {
       headers
     });
 
@@ -276,7 +276,7 @@ export const canReviewProduct = async (productId: string): Promise<{
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch(`/store/products/${productId}/can-review`, {
+    const response = await omnicartClient.fetch(`/store/products/${productId}/can-review`, {
       headers
     });
 

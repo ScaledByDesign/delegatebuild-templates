@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 import { getAuthHeaders } from '@/lib/util/cookies';
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface OrderStatusUpdate {
   id: string;
@@ -42,7 +42,7 @@ export const getRealTimeOrderStatus = async (orderId: string): Promise<RealTimeO
 
     // In a real implementation, this would connect to a WebSocket or Server-Sent Events
     // For now, we'll simulate real-time data
-    const response = await medusaClient.fetch(`/store/orders/${orderId}/status`, {
+    const response = await omnicartClient.fetch(`/store/orders/${orderId}/status`, {
       headers
     });
 
@@ -105,7 +105,7 @@ export const getRealTimeOrderStatus = async (orderId: string): Promise<RealTimeO
 
     return mockStatus;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -144,12 +144,12 @@ export const markNotificationAsRead = async (notificationId: string): Promise<vo
       'Content-Type': 'application/json'
     };
 
-    await medusaClient.fetch(`/store/notifications/${notificationId}/read`, {
+    await omnicartClient.fetch(`/store/notifications/${notificationId}/read`, {
       method: 'POST',
       headers
     });
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -160,7 +160,7 @@ export const getCustomerNotifications = async (limit = 10): Promise<OrderNotific
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch(`/store/customers/me/notifications?limit=${limit}`, {
+    const response = await omnicartClient.fetch(`/store/customers/me/notifications?limit=${limit}`, {
       headers
     });
 

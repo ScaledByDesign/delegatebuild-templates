@@ -1,5 +1,5 @@
-import { medusaClient } from "../medusa-client"
-import medusaError from "../util/medusa-error"
+import { omnicartClient } from "../omnicart-client"
+import omnicartError from "../util/omnicart-error"
 import { getAuthHeaders } from "../util/cookies"
 
 // Define response types
@@ -28,7 +28,7 @@ export const getCustomerOrders = async (limit = 10, offset = 0) => {
       return { orders: [], count: 0, limit, offset }
     }
 
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       "/store/customers/me/orders",
       {
         method: "GET",
@@ -43,7 +43,7 @@ export const getCustomerOrders = async (limit = 10, offset = 0) => {
 
     return response
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -60,7 +60,7 @@ export const getOrder = async (orderId: string) => {
       ...getAuthHeaders(),
     }
 
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       `/store/orders/${orderId}`,
       {
         method: "GET",
@@ -73,7 +73,7 @@ export const getOrder = async (orderId: string) => {
 
     return response.order
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -86,7 +86,7 @@ export const lookupOrder = async (displayId: string, email: string) => {
   }
 
   try {
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       "/store/orders/",
       {
         method: "GET",
@@ -107,6 +107,6 @@ export const lookupOrder = async (displayId: string, email: string) => {
 
     return response.orders[0]
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }

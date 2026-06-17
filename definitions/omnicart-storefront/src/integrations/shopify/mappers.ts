@@ -1,7 +1,7 @@
 // @ts-nocheck
 import type { ShopifyProductNode } from "./shopifyClient"
 import type { ScrapedProduct } from "./webScraper"
-import type { MedusaProduct } from "./medusaAdminClient"
+import type { OmnicartProduct } from "./omnicartAdminClient"
 
 export const DEFAULT_INVENTORY_QUANTITY = 10_000
 
@@ -20,7 +20,7 @@ export interface VariantUpsertInput {
 
 export function buildProductUpsertPayload(
   shopifyProduct: ShopifyProductNode,
-  existingProduct?: MedusaProduct
+  existingProduct?: OmnicartProduct
 ): ProductUpsertPayload {
   const status = shopifyProduct.status === "ACTIVE" ? "published" : "draft"
 
@@ -90,7 +90,7 @@ export function buildProductUpsertPayload(
 
 export function buildVariantUpsertPayload(
   shopifyProduct: ShopifyProductNode,
-  medusaProduct: MedusaProduct
+  medusaProduct: OmnicartProduct
 ): VariantUpsertInput[] {
   const medusaOptionsByTitle = new Map(medusaProduct.options.map((option) => [option.title.toLowerCase(), option]))
 
@@ -158,7 +158,7 @@ export function shopifyIdFromGid(gid: string): string {
  */
 export function buildProductUpsertPayloadFromScrape(
   scrapedProduct: ScrapedProduct,
-  medusaProduct?: MedusaProduct,
+  medusaProduct?: OmnicartProduct,
   skipHandleUpdate: boolean = false
 ): {
   createPayload: any
@@ -298,7 +298,7 @@ export function buildProductUpsertPayloadFromScrape(
  */
 export function buildVariantUpsertPayloadFromScrape(
   scrapedProduct: ScrapedProduct,
-  medusaProduct: MedusaProduct
+  medusaProduct: OmnicartProduct
 ): Array<{
   productId: string
   variantId?: string

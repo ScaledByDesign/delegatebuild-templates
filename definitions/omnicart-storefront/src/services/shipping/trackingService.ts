@@ -1,4 +1,4 @@
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface TrackingEvent {
   id: string;
@@ -172,7 +172,7 @@ export const trackPackage = async (trackingNumber: string): Promise<TrackingInfo
     
     return trackingInfo;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -191,7 +191,7 @@ export const trackMultiplePackages = async (trackingNumbers: string[]): Promise<
       .filter((result): result is PromiseFulfilledResult<TrackingInfo> => result.status === 'fulfilled')
       .map(result => result.value);
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 

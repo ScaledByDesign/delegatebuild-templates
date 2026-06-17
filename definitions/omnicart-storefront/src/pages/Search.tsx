@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
-import { getProducts, MedusaProduct, MedusaProductVariant } from '@/services/medusa/products';
+import { getProducts, OmnicartProduct, OmnicartProductVariant } from '@/services/omnicart/products';
 
 interface SearchProduct {
   id: string;
@@ -35,7 +35,7 @@ interface SearchProduct {
   collection?: string;
 }
 
-const isVariantAvailable = (variant?: MedusaProductVariant) => {
+const isVariantAvailable = (variant?: OmnicartProductVariant) => {
   if (!variant) return false;
   if (!variant.manage_inventory) return true;
   // Check actual inventory quantity - if undefined/null when managing inventory, treat as out of stock
@@ -46,7 +46,7 @@ const isVariantAvailable = (variant?: MedusaProductVariant) => {
   return variant.inventory_quantity > 0;
 };
 
-const selectDisplayVariant = (variants: MedusaProductVariant[] = []) => {
+const selectDisplayVariant = (variants: OmnicartProductVariant[] = []) => {
   const availableVariant = variants.find(isVariantAvailable);
   return availableVariant ?? variants[0];
 };
@@ -87,7 +87,7 @@ const Search = () => {
     }
   }, [fetchError]);
 
-  const transformProduct = useCallback((product: MedusaProduct): SearchProduct => {
+  const transformProduct = useCallback((product: OmnicartProduct): SearchProduct => {
     const displayVariant = selectDisplayVariant(product.variants);
     const priceAmount = displayVariant?.calculated_price?.calculated_amount
       ?? displayVariant?.prices?.[0]?.amount

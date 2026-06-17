@@ -1,7 +1,7 @@
-import { medusaClient } from "../../lib/medusa-client"
-import medusaError from "../../lib/util/medusa-error"
+import { omnicartClient } from "../../lib/omnicart-client"
+import omnicartError from "../../lib/util/omnicart-error"
 
-export interface MedusaRegion {
+export interface OmnicartRegion {
   id: string
   name: string
   currency_code: string
@@ -26,15 +26,15 @@ export interface MedusaRegion {
 }
 
 export interface RegionsResponse {
-  regions: MedusaRegion[]
+  regions: OmnicartRegion[]
 }
 
 /**
  * List all regions
  */
-export const listRegions = async (): Promise<MedusaRegion[]> => {
+export const listRegions = async (): Promise<OmnicartRegion[]> => {
   try {
-    const response = await medusaClient.get<RegionsResponse>(
+    const response = await omnicartClient.get<RegionsResponse>(
       "/store/regions",
       {
         cache: "force-cache",
@@ -44,16 +44,16 @@ export const listRegions = async (): Promise<MedusaRegion[]> => {
     return response.regions
   } catch (error) {
     console.error('Error fetching regions:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
 /**
  * Get region by ID
  */
-export const getRegion = async (regionId: string): Promise<MedusaRegion> => {
+export const getRegion = async (regionId: string): Promise<OmnicartRegion> => {
   try {
-    const response = await medusaClient.get<{ region: MedusaRegion }>(
+    const response = await omnicartClient.get<{ region: OmnicartRegion }>(
       `/store/regions/${regionId}`,
       {
         cache: "force-cache",
@@ -63,14 +63,14 @@ export const getRegion = async (regionId: string): Promise<MedusaRegion> => {
     return response.region
   } catch (error) {
     console.error('Error fetching region:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
 /**
  * Get region by country code
  */
-export const getRegionByCountry = async (countryCode: string): Promise<MedusaRegion | null> => {
+export const getRegionByCountry = async (countryCode: string): Promise<OmnicartRegion | null> => {
   try {
     const regions = await listRegions()
     
@@ -90,7 +90,7 @@ export const getRegionByCountry = async (countryCode: string): Promise<MedusaReg
 /**
  * Get default region (first available region)
  */
-export const getDefaultRegion = async (): Promise<MedusaRegion | null> => {
+export const getDefaultRegion = async (): Promise<OmnicartRegion | null> => {
   try {
     const regions = await listRegions()
     return regions.length > 0 ? regions[0] : null

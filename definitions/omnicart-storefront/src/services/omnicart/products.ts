@@ -1,8 +1,8 @@
 // Using direct API client for CORS-free API access
-import { medusaClient } from '../../lib/medusa-client';
+import { omnicartClient } from '../../lib/omnicart-client';
 import { OMNICART_PUBLISHABLE_KEY, OMNICART_SALES_CHANNEL_ID } from '@/lib/omnicart-config';
 
-export interface MedusaProductOption {
+export interface OmnicartProductOption {
   id: string
   title: string
   values: Array<{
@@ -11,12 +11,12 @@ export interface MedusaProductOption {
   }>
 }
 
-export interface MedusaProductImage {
+export interface OmnicartProductImage {
   id: string
   url: string
 }
 
-export interface MedusaProductVariant {
+export interface OmnicartProductVariant {
   id: string
   title: string
   sku?: string
@@ -40,20 +40,20 @@ export interface MedusaProductVariant {
     currency_code: string
   }
   /** Variant-specific images (Medusa 2.12+) */
-  images?: MedusaProductImage[]
+  images?: OmnicartProductImage[]
   /** Variant thumbnail URL (Medusa 2.12+) */
   thumbnail?: string | null
 }
 
-export interface MedusaProduct {
+export interface OmnicartProduct {
   id: string
   title: string
   handle: string
   description: string | null
   thumbnail: string | null
-  images: MedusaProductImage[]
-  variants: Array<MedusaProductVariant>
-  options?: Array<MedusaProductOption>
+  images: OmnicartProductImage[]
+  variants: Array<OmnicartProductVariant>
+  options?: Array<OmnicartProductOption>
   collection?: {
     id: string
     title: string
@@ -69,11 +69,11 @@ export interface MedusaProduct {
   metadata?: Record<string, unknown>
 }
 
-export interface MedusaCollection {
+export interface OmnicartCollection {
   id: string
   title: string
   handle: string
-  products?: MedusaProduct[]
+  products?: OmnicartProduct[]
 }
 
 type VariantSourceConfig = {
@@ -94,7 +94,7 @@ type ProductOverrideConfig = {
 
 type SourceProductEntry = {
   config: VariantSourceConfig
-  product: MedusaProduct
+  product: OmnicartProduct
 }
 
 const PRODUCT_OVERRIDES: Record<string, ProductOverrideConfig> = {
@@ -131,7 +131,7 @@ const DEFAULT_QUERY_FIELDS =
 async function fetchStoreProductByHandle(
   handle: string,
   options?: { useSalesChannel?: boolean }
-): Promise<MedusaProduct | null> {
+): Promise<OmnicartProduct | null> {
   if (!handle) return null
 
   const { useSalesChannel = true } = options ?? {}
@@ -146,7 +146,7 @@ async function fetchStoreProductByHandle(
       query['sales_channel_id'] = [OMNICART_SALES_CHANNEL_ID]
     }
 
-    const response = await medusaClient.get<{ products: MedusaProduct[] }>('/store/products', {
+    const response = await omnicartClient.get<{ products: OmnicartProduct[] }>('/store/products', {
       query,
       headers: {
         'x-publishable-api-key': OMNICART_PUBLISHABLE_KEY,
@@ -164,7 +164,7 @@ async function fetchStoreProductByHandle(
 function createVirtualProductFromSources(
   override: ProductOverrideConfig,
   sources: SourceProductEntry[]
-): MedusaProduct | null {
+): OmnicartProduct | null {
   if (!sources.length) return null
 
   const baseProduct = sources[0]?.product
@@ -177,12 +177,12 @@ function createVirtualProductFromSources(
     value: source.config.optionValue,
   }))
 
-  const variants: MedusaProductVariant[] = sources
+  const variants: OmnicartProductVariant[] = sources
     .map((source, index) => {
       const baseVariant = source.product?.variants?.[0]
       if (!baseVariant) return null
 
-      const virtualVariant: MedusaProductVariant = {
+      const virtualVariant: OmnicartProductVariant = {
         ...baseVariant,
         title: `${override.title} - ${source.config.optionValue}`,
         product_id: virtualProductId,
@@ -197,7 +197,7 @@ function createVirtualProductFromSources(
 
       return virtualVariant
     })
-    .filter((variant): variant is MedusaProductVariant => Boolean(variant))
+    .filter((variant): variant is OmnicartProductVariant => Boolean(variant))
 
   if (!variants.length) {
     return null
@@ -249,9 +249,9 @@ function createVirtualProductFromSources(
 
 async function buildOverrideProduct(
   override: ProductOverrideConfig,
-  productMap: Map<string, MedusaProduct>,
+  productMap: Map<string, OmnicartProduct>,
   options?: { requireExistingSources?: boolean }
-): Promise<{ product: MedusaProduct; consumedHandles: string[] } | null> {
+): Promise<{ product: OmnicartProduct; consumedHandles: string[] } | null> {
   const requireExistingSources = options?.requireExistingSources ?? false
   const collectedSources: SourceProductEntry[] = []
 
@@ -282,9 +282,9 @@ async function buildOverrideProduct(
 }
 
 async function withProductOverrides(
-  products: MedusaProduct[],
+  products: OmnicartProduct[],
   options?: { requireExistingSources?: boolean }
-): Promise<MedusaProduct[]> {
+): Promise<OmnicartProduct[]> {
   let nextProducts = [...products]
   const productMap = new Map(products.map((product) => [product.handle, product]))
 
@@ -309,7 +309,7 @@ async function withProductOverrides(
   return nextProducts
 }
 
-async function getOverrideProductByHandle(handle: string): Promise<MedusaProduct | null> {
+async function getOverrideProductByHandle(handle: string): Promise<OmnicartProduct | null> {
   const override = PRODUCT_OVERRIDES[handle]
   if (!override) return null
 
@@ -327,7 +327,7 @@ export async function getProducts(params?: {
   category_id?: string[]
   q?: string
   sales_channel_id?: string[]
-}): Promise<{ products: MedusaProduct[]; count: number }> {
+}): Promise<{ products: OmnicartProduct[]; count: number }> {
   try {
     const query: Record<string, unknown> = {
       limit: params?.limit ?? 50,
@@ -352,7 +352,7 @@ export async function getProducts(params?: {
       query['q'] = params.q
     }
 
-    const response = await medusaClient.get<{ products?: MedusaProduct[]; count?: number }>(
+    const response = await omnicartClient.get<{ products?: OmnicartProduct[]; count?: number }>(
       '/store/products',
       {
         query,
@@ -379,7 +379,7 @@ export async function getProducts(params?: {
 /**
  * Fetch a single product by handle/slug
  */
-export async function getProductByHandle(handle: string): Promise<MedusaProduct | null> {
+export async function getProductByHandle(handle: string): Promise<OmnicartProduct | null> {
   const normalizedHandle = (handle ?? "").toLowerCase()
   if (!normalizedHandle) return null
 
@@ -392,9 +392,9 @@ export async function getProductByHandle(handle: string): Promise<MedusaProduct 
 /**
  * Fetch a single product by ID
  */
-export async function getProduct(id: string): Promise<MedusaProduct | null> {
+export async function getProduct(id: string): Promise<OmnicartProduct | null> {
   try {
-    const response = await medusaClient.get<{ product: MedusaProduct }>(
+    const response = await omnicartClient.get<{ product: OmnicartProduct }>(
       `/store/products/${id}`,
       {
         query: {
@@ -418,9 +418,9 @@ export async function getProduct(id: string): Promise<MedusaProduct | null> {
 /**
  * Fetch collections
  */
-export async function getCollections(): Promise<MedusaCollection[]> {
+export async function getCollections(): Promise<OmnicartCollection[]> {
   try {
-    const response = await medusaClient.get<{ collections: MedusaCollection[] }>('/store/collections', {
+    const response = await omnicartClient.get<{ collections: OmnicartCollection[] }>('/store/collections', {
       query: {
         fields: "*products"
       }
@@ -436,9 +436,9 @@ export async function getCollections(): Promise<MedusaCollection[]> {
 /**
  * Fetch a single collection by handle
  */
-export async function getCollectionByHandle(handle: string): Promise<MedusaCollection | null> {
+export async function getCollectionByHandle(handle: string): Promise<OmnicartCollection | null> {
   try {
-    const response = await medusaClient.get<{ collections: MedusaCollection[] }>('/store/collections', {
+    const response = await omnicartClient.get<{ collections: OmnicartCollection[] }>('/store/collections', {
       query: {
         handle,
         fields: "*products"
@@ -455,9 +455,9 @@ export async function getCollectionByHandle(handle: string): Promise<MedusaColle
 /**
  * Search products
  */
-export async function searchProducts(query: string, limit = 20): Promise<MedusaProduct[]> {
+export async function searchProducts(query: string, limit = 20): Promise<OmnicartProduct[]> {
   try {
-    const response = await medusaClient.get<{ products: MedusaProduct[] }>('/store/products', {
+    const response = await omnicartClient.get<{ products: OmnicartProduct[] }>('/store/products', {
       query: {
         q: query,
         limit,
@@ -479,16 +479,16 @@ export async function searchProducts(query: string, limit = 20): Promise<MedusaP
 
 /**
  * Check if a variant is in stock by fetching the product and checking inventory
- * Returns { inStock: boolean, variant: MedusaProductVariant | null }
+ * Returns { inStock: boolean, variant: OmnicartProductVariant | null }
  */
 export async function checkVariantStock(variantId: string): Promise<{
   inStock: boolean
-  variant: MedusaProductVariant | null
-  product: MedusaProduct | null
+  variant: OmnicartProductVariant | null
+  product: OmnicartProduct | null
 }> {
   try {
     // Fetch products with this variant ID
-    const response = await medusaClient.get<{ products: MedusaProduct[] }>(
+    const response = await omnicartClient.get<{ products: OmnicartProduct[] }>(
       '/store/products',
       {
         query: {
@@ -535,10 +535,10 @@ export async function checkVariantStock(variantId: string): Promise<{
  */
 export async function checkMultipleVariantsStock(variantIds: string[]): Promise<Map<string, {
   inStock: boolean
-  variant: MedusaProductVariant | null
+  variant: OmnicartProductVariant | null
   productTitle?: string
 }>> {
-  const results = new Map<string, { inStock: boolean; variant: MedusaProductVariant | null; productTitle?: string }>()
+  const results = new Map<string, { inStock: boolean; variant: OmnicartProductVariant | null; productTitle?: string }>()
 
   if (variantIds.length === 0) {
     return results
@@ -546,7 +546,7 @@ export async function checkMultipleVariantsStock(variantIds: string[]): Promise<
 
   try {
     // Fetch all products with these variant IDs
-    const response = await medusaClient.get<{ products: MedusaProduct[] }>(
+    const response = await omnicartClient.get<{ products: OmnicartProduct[] }>(
       '/store/products',
       {
         query: {

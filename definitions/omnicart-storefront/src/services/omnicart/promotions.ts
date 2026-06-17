@@ -1,5 +1,5 @@
-import { medusaClient } from "../../lib/medusa-client"
-import medusaError from "../../lib/util/medusa-error"
+import { omnicartClient } from "../../lib/omnicart-client"
+import omnicartError from "../../lib/util/omnicart-error"
 import { getAuthHeaders } from "../../lib/util/cookies"
 
 export interface Promotion {
@@ -42,7 +42,7 @@ export const applyPromotionCodes = async (
   try {
     const headers = getAuthHeaders()
     
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       `/store/carts/${cartId}/promotions`,
       {
         method: "POST",
@@ -59,7 +59,7 @@ export const applyPromotionCodes = async (
     return response
   } catch (error) {
     console.error('Error applying promotion codes:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -73,7 +73,7 @@ export const removePromotionCodes = async (
   try {
     const headers = getAuthHeaders()
     
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       `/store/carts/${cartId}/promotions`,
       {
         method: "DELETE",
@@ -90,7 +90,7 @@ export const removePromotionCodes = async (
     return response
   } catch (error) {
     console.error('Error removing promotion codes:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -109,7 +109,7 @@ export const validatePromotionCode = async (
       query.cart_id = cartId
     }
     
-    const response = await medusaClient.fetch<{ promotion: Promotion }>(
+    const response = await omnicartClient.fetch<{ promotion: Promotion }>(
       "/store/promotions/validate",
       {
         method: "GET",
@@ -142,7 +142,7 @@ export const listPromotions = async (params?: {
   try {
     const headers = getAuthHeaders()
     
-    const response = await medusaClient.fetch<PromotionsResponse & { count: number }>(
+    const response = await omnicartClient.fetch<PromotionsResponse & { count: number }>(
       "/store/promotions",
       {
         method: "GET",

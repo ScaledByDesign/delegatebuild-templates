@@ -1,10 +1,10 @@
-import { MedusaProduct, MedusaProductVariant } from '@/services/medusa/products'
+import { OmnicartProduct, OmnicartProductVariant } from '@/services/omnicart/products'
 
 /**
  * Convert variant options to a key-value map
  */
 export const optionsAsKeymap = (
-  variantOptions: MedusaProductVariant["options"]
+  variantOptions: OmnicartProductVariant["options"]
 ): Record<string, string> => {
   return variantOptions?.reduce((acc: Record<string, string>, varopt) => {
     acc[varopt.option_id] = varopt.value
@@ -16,9 +16,9 @@ export const optionsAsKeymap = (
  * Find a variant based on selected options
  */
 export const findVariantByOptions = (
-  product: MedusaProduct,
+  product: OmnicartProduct,
   selectedOptions: Record<string, string>
-): MedusaProductVariant | undefined => {
+): OmnicartProductVariant | undefined => {
   if (!product.variants || product.variants.length === 0) {
     return undefined
   }
@@ -38,7 +38,7 @@ export const findVariantByOptions = (
 /**
  * Get the cheapest price from all variants
  */
-export const getCheapestPrice = (product: MedusaProduct) => {
+export const getCheapestPrice = (product: OmnicartProduct) => {
   if (!product.variants || product.variants.length === 0) {
     return null
   }
@@ -64,7 +64,7 @@ export const getCheapestPrice = (product: MedusaProduct) => {
 /**
  * Get price for a specific variant
  */
-export const getVariantPrice = (variant: MedusaProductVariant | undefined) => {
+export const getVariantPrice = (variant: OmnicartProductVariant | undefined) => {
   if (!variant || !variant.prices || variant.prices.length === 0) {
     return null
   }
@@ -94,7 +94,7 @@ export const formatPrice = (amount: number, currencyCode: string): string => {
 /**
  * Check if a variant is in stock
  */
-export const isVariantInStock = (variant: MedusaProductVariant | undefined): boolean => {
+export const isVariantInStock = (variant: OmnicartProductVariant | undefined): boolean => {
   if (!variant) return false
 
   // If inventory is not managed, assume it's in stock
@@ -124,7 +124,7 @@ export const isVariantInStock = (variant: MedusaProductVariant | undefined): boo
  * Get all available option values for a specific option
  */
 export const getAvailableOptionValues = (
-  product: MedusaProduct,
+  product: OmnicartProduct,
   optionId: string,
   selectedOptions: Record<string, string>
 ): string[] => {
@@ -217,7 +217,7 @@ export const sortProductOptions = (
 /**
  * Transform Medusa product to UI-compatible format
  */
-export const transformMedusaProductForUI = (medusaProduct: MedusaProduct) => {
+export const transformOmnicartProductForUI = (medusaProduct: OmnicartProduct) => {
   const cheapestPrice = getCheapestPrice(medusaProduct)
   const variants = medusaProduct.variants || []
   const cheapestVariant = variants.reduce((best, variant) => {

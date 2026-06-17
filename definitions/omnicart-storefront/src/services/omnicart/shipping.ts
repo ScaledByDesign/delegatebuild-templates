@@ -1,5 +1,5 @@
-import { medusaClient } from "../../lib/medusa-client"
-import medusaError from "../../lib/util/medusa-error"
+import { omnicartClient } from "../../lib/omnicart-client"
+import omnicartError from "../../lib/util/omnicart-error"
 import { getAuthHeaders } from "../../lib/util/cookies"
 import { OMNICART_PUBLISHABLE_KEY } from "@/lib/omnicart-config"
 
@@ -117,7 +117,7 @@ export const listCartShippingOptions = async (cartId: string): Promise<ShippingO
 
     // Note: The default response already includes calculated_price and prices with rules
     // Adding custom fields like prices.price_rules causes a 500 error in Medusa v2
-    const response = await medusaClient.fetch<ShippingOptionsResponse>(
+    const response = await omnicartClient.fetch<ShippingOptionsResponse>(
       "/store/shipping-options",
       {
         method: "GET",
@@ -151,7 +151,7 @@ export const listRegionShippingOptions = async (regionId: string): Promise<Shipp
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch<ShippingOptionsResponse>(
+    const response = await omnicartClient.fetch<ShippingOptionsResponse>(
       "/store/shipping-options",
       {
         method: "GET",
@@ -178,7 +178,7 @@ export const getShippingOption = async (optionId: string): Promise<ShippingOptio
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch<{ shipping_option: ShippingOption }>(
+    const response = await omnicartClient.fetch<{ shipping_option: ShippingOption }>(
       `/store/shipping-options/${optionId}`,
       {
         method: "GET",
@@ -208,7 +208,7 @@ export const calculateShipping = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch<ShippingOptionsResponse>(
+    const response = await omnicartClient.fetch<ShippingOptionsResponse>(
       "/store/shipping-options",
       {
         method: "GET",

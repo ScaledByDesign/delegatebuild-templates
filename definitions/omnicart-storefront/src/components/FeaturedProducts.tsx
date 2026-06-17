@@ -4,7 +4,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Star, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useQuery } from '@tanstack/react-query';
-import { getProducts, MedusaProduct } from '@/services/medusa/products';
+import { getProducts, OmnicartProduct } from '@/services/omnicart/products';
 import { useCart } from '@/hooks/useCart';
 
 // Product interface
@@ -99,7 +99,7 @@ const ProductCard = ({ product }: { product: Product }) => {
 };
 
 // Transform Medusa product to local Product interface
-const transformMedusaProduct = (medusaProduct: MedusaProduct): Product => {
+const transformMedusaProduct = (medusaProduct: OmnicartProduct): Product => {
   const variants = medusaProduct.variants || [];
   const cheapestVariant = variants.reduce((cheapest, variant) => {
     const variantPrice = variant.calculated_price?.calculated_amount ?? variant.prices?.[0]?.amount ?? Number.POSITIVE_INFINITY;

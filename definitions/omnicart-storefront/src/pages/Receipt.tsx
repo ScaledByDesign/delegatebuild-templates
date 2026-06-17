@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
 import { useQuery } from '@tanstack/react-query';
-import { getOrderById } from '@/services/medusa/orders';
+import { getOrderById } from '@/services/omnicart/orders';
 
 const ReceiptPage = () => {
   const { orderId } = useParams();

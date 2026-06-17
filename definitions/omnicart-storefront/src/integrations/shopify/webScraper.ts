@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { ShopifyMedusaConfig } from "./config.ts"
+import type { ShopifyOmnicartConfig } from "./config.ts"
 
 export interface ScrapedProduct {
   id: string
@@ -61,7 +61,7 @@ export class ShopifyWebScraper {
   private baseUrl: string
   private timeout: number
 
-  constructor(config: ShopifyMedusaConfig) {
+  constructor(config: ShopifyOmnicartConfig) {
     this.baseUrl = `https://${config.shopifyDomain}`
     this.timeout = config.requestTimeoutMs
   }

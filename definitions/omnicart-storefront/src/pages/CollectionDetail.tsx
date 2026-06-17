@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
-import { getProducts, MedusaProduct } from "@/services/medusa/products"
-import { getCollectionByHandle } from "@/services/medusa/collections"
+import { getProducts, OmnicartProduct } from "@/services/omnicart/products"
+import { getCollectionByHandle } from "@/services/omnicart/collections"
 import { Loader2, Package, ArrowLeft } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -104,7 +104,7 @@ interface CollectionPageData {
   title: string
   handle: string
   metadata?: Record<string, unknown>
-  products: MedusaProduct[]
+  products: OmnicartProduct[]
 }
 
 type SortOption =
@@ -153,7 +153,7 @@ type HeroMetadata = {
 }
 
 const createCollectionProductModel = (
-  product: MedusaProduct,
+  product: OmnicartProduct,
   position: number,
   featuredRank?: number
 ): CollectionProductModel => {
@@ -238,9 +238,9 @@ const CollectionDetail: React.FC = () => {
       if (isAllProducts) {
         // Page through the full catalog (the default getProducts() call caps at 50,
         // which can hide featured products and break the ordering below).
-        const fetchAllProducts = async (): Promise<MedusaProduct[]> => {
+        const fetchAllProducts = async (): Promise<OmnicartProduct[]> => {
           const pageSize = 100
-          const all: MedusaProduct[] = []
+          const all: OmnicartProduct[] = []
           let offset = 0
           // Safety cap so a misbehaving API can't loop forever.
           for (let page = 0; page < 50; page++) {
@@ -283,7 +283,7 @@ const CollectionDetail: React.FC = () => {
         title: collection.title,
         handle: collection.handle,
         metadata: collection.metadata,
-        products: (collection.products ?? []) as MedusaProduct[],
+        products: (collection.products ?? []) as OmnicartProduct[],
       }
     },
   })
@@ -292,7 +292,7 @@ const CollectionDetail: React.FC = () => {
   const collectionContent = useMemo(() => getCollectionContent(derivedHandle), [derivedHandle])
 
   const productById = useMemo(() => {
-    const map = new Map<string, MedusaProduct>()
+    const map = new Map<string, OmnicartProduct>()
     ;(data?.products ?? []).forEach((product) => {
       if (product?.id) {
         map.set(product.id, product)
@@ -302,7 +302,7 @@ const CollectionDetail: React.FC = () => {
   }, [data?.products])
 
   const productModels = useMemo(() => {
-    const source = (data?.products ?? []) as MedusaProduct[]
+    const source = (data?.products ?? []) as OmnicartProduct[]
     // Prefer dynamic order from collection metadata, fall back to hardcoded ordering
     const metadataOrder = (data?.metadata as Record<string, any>)?.product_order as string[] | undefined
     const order = (metadataOrder && metadataOrder.length > 0)

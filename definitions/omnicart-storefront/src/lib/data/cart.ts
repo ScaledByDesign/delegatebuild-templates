@@ -1,5 +1,5 @@
-import { medusaClient } from "../medusa-client"
-import medusaError from "../util/medusa-error"
+import { omnicartClient } from "../omnicart-client"
+import omnicartError from "../util/omnicart-error"
 import { getAuthHeaders, getCartId, removeCartId, setCartId } from "../util/cookies"
 import { Cart, CartItem } from "@/hooks/useCart"
 import { getStoredAttribution } from "@/hooks/useAttributionCapture"
@@ -102,7 +102,7 @@ const resolveRegionId = async (explicitRegionId?: string): Promise<string | unde
 
   try {
     const headers = getStoreHeaders()
-    const response = await medusaClient.get<{ regions?: Array<{ id: string }> }>('/store/regions', {
+    const response = await omnicartClient.get<{ regions?: Array<{ id: string }> }>('/store/regions', {
       headers,
     })
 
@@ -156,7 +156,7 @@ export const retrieveCart = async (cartId?: string) => {
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.get<CartResponse>(
+    const response = await omnicartClient.get<CartResponse>(
       `/store/carts/${id}`,
       {
         query: {
@@ -216,7 +216,7 @@ export const createCart = async (regionId?: string) => {
       body.metadata = metadata
     }
 
-    const response = await medusaClient.post<CartResponse>(
+    const response = await omnicartClient.post<CartResponse>(
       "/store/carts",
       body,
       {
@@ -236,7 +236,7 @@ export const createCart = async (regionId?: string) => {
     } catch {
       // ignore
     }
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -265,7 +265,7 @@ export const updateCart = async (cartId: string, data: Record<string, unknown>) 
   try {
     const headers = getStoreHeaders()
 
-    await medusaClient.post<CartResponse>(
+    await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}`,
       data,
       {
@@ -285,7 +285,7 @@ export const updateCart = async (cartId: string, data: Record<string, unknown>) 
       console.warn('[updateCart] Terminal payment session during update — field update persisted, continuing with refetched cart')
       return await retrieveCart(cartId)
     }
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -309,7 +309,7 @@ export const addToCart = async (
   try {
     const headers = getStoreHeaders()
 
-    await medusaClient.post<CartResponse>(
+    await omnicartClient.post<CartResponse>(
       `/store/carts/${cart.id}/line-items`,
       {
         variant_id: variantId,
@@ -331,7 +331,7 @@ export const addToCart = async (
     } catch {
       // ignore
     }
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -354,7 +354,7 @@ export const updateLineItem = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.post<CartResponse>(
+    const response = await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}/line-items/${lineId}`,
       { quantity },
       {
@@ -387,7 +387,7 @@ export const updateLineItem = async (
         for (const item of currentCart.items) {
           if (item.variant?.id) {
             const itemQuantity = item.id === lineId ? quantity : item.quantity
-            await medusaClient.post<CartResponse>(
+            await omnicartClient.post<CartResponse>(
               `/store/carts/${newCart.id}/line-items`,
               {
                 variant_id: item.variant.id,
@@ -414,7 +414,7 @@ export const updateLineItem = async (
       }
     }
 
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -433,7 +433,7 @@ export const removeLineItem = async (cartId: string, lineId: string): Promise<Ca
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.delete<Partial<CartResponse>>(
+    const response = await omnicartClient.delete<Partial<CartResponse>>(
       `/store/carts/${cartId}/line-items/${lineId}`,
       {
         headers,
@@ -482,7 +482,7 @@ export const removeLineItem = async (cartId: string, lineId: string): Promise<Ca
         // Add preserved items back to the new cart
         for (const item of itemsToPreserve) {
           if (item.variant?.id) {
-            await medusaClient.post<CartResponse>(
+            await omnicartClient.post<CartResponse>(
               `/store/carts/${newCart.id}/line-items`,
               {
                 variant_id: item.variant.id,
@@ -505,7 +505,7 @@ export const removeLineItem = async (cartId: string, lineId: string): Promise<Ca
       }
     }
 
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -523,7 +523,7 @@ export const addShippingMethod = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.post<CartResponse>(
+    const response = await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}/shipping-methods`,
       { option_id: shippingOptionId },
       {
@@ -533,7 +533,7 @@ export const addShippingMethod = async (
 
     return response.cart
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -548,7 +548,7 @@ export const getShippingOptions = async (cartId: string) => {
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.get<ShippingOptionsResponse>(
+    const response = await omnicartClient.get<ShippingOptionsResponse>(
       `/store/shipping-options/${cartId}`,
       {
         headers,
@@ -557,7 +557,7 @@ export const getShippingOptions = async (cartId: string) => {
 
     return response.shipping_options
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -572,7 +572,7 @@ export const createPaymentSessions = async (cartId: string) => {
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.post<CartResponse>(
+    const response = await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}/payment-sessions`,
       {},
       {
@@ -582,7 +582,7 @@ export const createPaymentSessions = async (cartId: string) => {
 
     return response.cart
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -600,7 +600,7 @@ export const setPaymentSession = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.post<CartResponse>(
+    const response = await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}/payment-session`,
       { provider_id: providerId },
       {
@@ -610,7 +610,7 @@ export const setPaymentSession = async (
 
     return response.cart
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -636,7 +636,7 @@ export const mergeAttributionToCart = async (cartId: string): Promise<void> => {
 
   try {
     const headers = getStoreHeaders()
-    await medusaClient.post<CartResponse>(
+    await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}`,
       { metadata },
       { headers }
@@ -664,7 +664,7 @@ export const completeCart = async (cartId: string) => {
 
     let response: OrderResponse
     try {
-      response = await medusaClient.post<OrderResponse>(
+      response = await omnicartClient.post<OrderResponse>(
         `/store/carts/${cartId}/complete`,
         {},
         {
@@ -680,7 +680,7 @@ export const completeCart = async (cartId: string) => {
       // charged but the order stuck pending.
       if (isTerminalPaymentSessionError(completeError)) {
         console.warn('[completeCart] Terminal payment session on complete — retrying once against the succeeded PaymentIntent...')
-        response = await medusaClient.post<OrderResponse>(
+        response = await omnicartClient.post<OrderResponse>(
           `/store/carts/${cartId}/complete`,
           {},
           {
@@ -699,7 +699,7 @@ export const completeCart = async (cartId: string) => {
     // depending on the payment status
     return response.order || response.data
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -717,7 +717,7 @@ export const applyPromotions = async (codes: string[]) => {
     const headers = getStoreHeaders()
 
     // Update cart with promo codes - Medusa will apply them
-    await medusaClient.post<CartResponse>(
+    await omnicartClient.post<CartResponse>(
       `/store/carts/${cartId}`,
       { promo_codes: codes },
       {
@@ -728,6 +728,6 @@ export const applyPromotions = async (codes: string[]) => {
     // Return the updated cart
     return retrieveCart(cartId)
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }

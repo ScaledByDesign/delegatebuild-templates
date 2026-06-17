@@ -17,7 +17,7 @@ import {
   type PointsTransaction,
   type LoyaltyReward,
   type RedeemRewardRequest
-} from '@/services/medusa/loyalty';
+} from '@/services/omnicart/loyalty';
 
 // Feature flag to avoid calling loyalty endpoints when backend doesn't support them
 const FEATURE_LOYALTY: boolean = (import.meta as any)?.env?.VITE_FEATURE_LOYALTY === 'true';

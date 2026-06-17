@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
-import { getOrderById, getOrderStatusText, getFulfillmentStatusText } from '@/services/medusa/orders';
+import { getOrderById, getOrderStatusText, getFulfillmentStatusText } from '@/services/omnicart/orders';
 import {
   trackPackage,
   getTrackingUrl,

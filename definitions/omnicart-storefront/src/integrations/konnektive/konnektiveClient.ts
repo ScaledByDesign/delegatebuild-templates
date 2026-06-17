@@ -1,4 +1,4 @@
-import type { KonnektiveMedusaConfig } from "./config"
+import type { KonnektiveOmnicartConfig } from "./config"
 
 export interface KonnektiveCustomer {
   customerId: string
@@ -157,7 +157,7 @@ export class KonnektiveApiClient {
   private password: string
   private timeout: number
 
-  constructor(config: KonnektiveMedusaConfig) {
+  constructor(config: KonnektiveOmnicartConfig) {
     this.baseUrl = config.konnektiveApiUrl
     this.loginId = config.konnektiveLoginId
     this.password = config.konnektivePassword

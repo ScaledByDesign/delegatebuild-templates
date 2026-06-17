@@ -45,7 +45,7 @@ function ensure(value: string | undefined, name: string): string {
 
 export type ShopifyDataSource = "admin-api" | "public-json"
 
-export interface ShopifyMedusaConfig {
+export interface ShopifyOmnicartConfig {
   shopifyDomain: string
   shopifyAccessToken?: string
   medusaAdminUrl: string
@@ -62,7 +62,7 @@ export interface ShopifyMedusaConfig {
 
 const DEFAULT_TIMEOUT = 60_000
 
-export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyMedusaConfig {
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicartConfig {
   hydrateEnv(env)
 
   const shopifyDomain = ensure(env.SHOPIFY_STORE_DOMAIN, "SHOPIFY_STORE_DOMAIN")

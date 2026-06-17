@@ -3,7 +3,7 @@ import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
 import { Button } from '@/components/ui/button';
 import { Loader2, Lock } from 'lucide-react';
 import type { HttpTypes } from '@medusajs/types';
-import { medusaClient } from '@/lib/medusa-client';
+import { omnicartClient } from '@/lib/omnicart-client';
 
 interface PaymentCollectionStepProps {
   cart: HttpTypes.StoreCart | null;
@@ -70,7 +70,7 @@ export const PaymentCollectionStep: React.FC<PaymentCollectionStepProps> = ({
       }
 
       // Complete the cart in Medusa
-      const responseData = await medusaClient.post<{ order: any }>(`/store/carts/${cart.id}/complete`);
+      const responseData = await omnicartClient.post<{ order: any }>(`/store/carts/${cart.id}/complete`);
       onSuccess(responseData.order.id);
     } catch (error) {
       console.error('Payment error:', error);

@@ -9,7 +9,7 @@ import { User, Package, Settings, MapPin, CreditCard, LogOut } from 'lucide-reac
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { useCustomer } from '@/hooks/useCustomer';
-import { getCustomerOrders, getOrderStatusText, getFulfillmentStatusText } from '@/services/medusa/orders';
+import { getCustomerOrders, getOrderStatusText, getFulfillmentStatusText } from '@/services/omnicart/orders';
 import KonnektiveOrderWidget from '@/components/KonnektiveOrderWidget';
 
 const Account = () => {

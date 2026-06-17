@@ -15,7 +15,7 @@ import {
   type CreateReviewRequest,
   type UpdateReviewRequest,
   type ReviewFilters
-} from '@/services/medusa/reviews';
+} from '@/services/omnicart/reviews';
 
 /**
  * Hook for fetching product reviews

@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 import { getAuthHeaders } from '@/lib/util/cookies';
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface WishlistItem {
   id: string;
@@ -66,7 +66,7 @@ export const getCustomerWishlists = async (): Promise<Wishlist[]> => {
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch('/store/customers/me/wishlists', {
+    const response = await omnicartClient.fetch('/store/customers/me/wishlists', {
       headers
     });
 
@@ -102,7 +102,7 @@ export const getDefaultWishlist = async (): Promise<Wishlist> => {
     // Create default wishlist if none exists
     return await createWishlist({ name: 'My Wishlist', is_private: true });
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -116,7 +116,7 @@ export const createWishlist = async (request: CreateWishlistRequest): Promise<Wi
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch('/store/customers/me/wishlists', {
+    const response = await omnicartClient.fetch('/store/customers/me/wishlists', {
       method: 'POST',
       headers,
       body: JSON.stringify(request)
@@ -150,7 +150,7 @@ export const addToWishlist = async (
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch(`/store/wishlists/${wishlistId}/items`, {
+    const response = await omnicartClient.fetch(`/store/wishlists/${wishlistId}/items`, {
       method: 'POST',
       headers,
       body: JSON.stringify(request)
@@ -158,7 +158,7 @@ export const addToWishlist = async (
 
     return (response as any)?.item;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -172,12 +172,12 @@ export const removeFromWishlist = async (
   try {
     const headers = getAuthHeaders();
 
-    await medusaClient.fetch(`/store/wishlists/${wishlistId}/items/${itemId}`, {
+    await omnicartClient.fetch(`/store/wishlists/${wishlistId}/items/${itemId}`, {
       method: 'DELETE',
       headers
     });
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -212,7 +212,7 @@ export const toggleWishlistItem = async (
       return { added: true, item };
     }
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -223,13 +223,13 @@ export const getWishlistById = async (wishlistId: string): Promise<Wishlist> => 
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch(`/store/wishlists/${wishlistId}?expand=items,items.variant,items.product`, {
+    const response = await omnicartClient.fetch(`/store/wishlists/${wishlistId}?expand=items,items.variant,items.product`, {
       headers
     });
 
     return (response as any)?.wishlist;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -246,7 +246,7 @@ export const updateWishlist = async (
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch(`/store/wishlists/${wishlistId}`, {
+    const response = await omnicartClient.fetch(`/store/wishlists/${wishlistId}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(updates)
@@ -254,7 +254,7 @@ export const updateWishlist = async (
 
     return (response as any)?.wishlist;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -282,7 +282,7 @@ export const moveToCart = async (
     }
 
     // Add to cart
-    await medusaClient.fetch(`/store/carts/${cartId}/line-items`, {
+    await omnicartClient.fetch(`/store/carts/${cartId}/line-items`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -294,7 +294,7 @@ export const moveToCart = async (
     // Remove from wishlist
     await removeFromWishlist(wishlistId, itemId);
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -308,7 +308,7 @@ export const shareWishlist = async (wishlistId: string): Promise<{ share_url: st
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch(`/store/wishlists/${wishlistId}/share`, {
+    const response = await omnicartClient.fetch(`/store/wishlists/${wishlistId}/share`, {
       method: 'POST',
       headers
     });
@@ -329,10 +329,10 @@ export const shareWishlist = async (wishlistId: string): Promise<{ share_url: st
  */
 export const getSharedWishlist = async (shareToken: string): Promise<Wishlist> => {
   try {
-    const response = await medusaClient.fetch(`/store/wishlists/shared/${shareToken}?expand=items,items.variant,items.product`);
+    const response = await omnicartClient.fetch(`/store/wishlists/shared/${shareToken}?expand=items,items.variant,items.product`);
     return (response as any)?.wishlist;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 

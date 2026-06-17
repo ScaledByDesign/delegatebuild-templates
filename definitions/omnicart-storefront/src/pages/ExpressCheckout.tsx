@@ -7,7 +7,7 @@ import { useCart } from "@/hooks/useCart";
 import { updateCart, addShippingMethod, createCart, addToCart, retrieveCart } from "@/lib/data/cart";
 import { updateCartEmail, calculateCartTaxes, updateShippingAddressWithTaxes, batchUpdateCart } from "@/lib/data/checkout";
 import { sdk } from "@/lib/sdk";
-import { listCartShippingOptions } from "@/services/medusa/shipping";
+import { listCartShippingOptions } from "@/services/omnicart/shipping";
 import { normalizeStateCode, capitalizeWords } from "@/lib/checkout/states";
 import DiscountCode from "@/components/DiscountCode";
 import { Separator } from '@/components/ui/separator';

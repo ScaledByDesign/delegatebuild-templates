@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 
-export interface MedusaOrder {
+export interface OmnicartOrder {
   id: string;
   display_id: string;
   status: string;
@@ -59,7 +59,7 @@ export interface MedusaOrder {
 }
 
 export interface OrdersResponse {
-  orders: MedusaOrder[];
+  orders: OmnicartOrder[];
   count: number;
   offset: number;
   limit: number;
@@ -68,13 +68,13 @@ export interface OrdersResponse {
 /**
  * Get order by ID
  */
-export const getOrderById = async (orderId: string, retryCount = 0): Promise<MedusaOrder> => {
+export const getOrderById = async (orderId: string, retryCount = 0): Promise<OmnicartOrder> => {
   const maxRetries = 3;
   const retryDelay = 1000; // 1 second
 
   try {
     // Try simple request first (no fields/expand) to see if order exists
-    const response = await medusaClient.get<{ order: MedusaOrder }>(
+    const response = await omnicartClient.get<{ order: OmnicartOrder }>(
       `/store/orders/${orderId}`,
       {
         query: {
@@ -118,7 +118,7 @@ export const getCustomerOrders = async (
       params.customer_id = customerId;
     }
 
-    const response = await medusaClient.get<OrdersResponse>(
+    const response = await omnicartClient.get<OrdersResponse>(
       `/store/orders`,
       {
         query: params,

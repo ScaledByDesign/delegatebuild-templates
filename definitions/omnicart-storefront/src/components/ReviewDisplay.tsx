@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { StarRating, RatingDistributionBar } from '@/components/StarRating';
 import { useReviewManagement } from '@/hooks/useReviews';
-import { formatReviewDate, type ProductReview, type ReviewFilters } from '@/services/medusa/reviews';
+import { formatReviewDate, type ProductReview, type ReviewFilters } from '@/services/omnicart/reviews';
 import { ThumbsUp, Filter, ChevronDown, ChevronUp, Verified } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReviewForm from '@/components/ReviewForm';

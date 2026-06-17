@@ -1,6 +1,6 @@
-import type { MedusaProduct, MedusaProductVariant } from '@/services/medusa/products';
+import type { OmnicartProduct, OmnicartProductVariant } from '@/services/omnicart/products';
 import type { ProductContent } from '@/lib/content/productContent';
-import type { ReviewSummary } from '@/services/medusa/reviews';
+import type { ReviewSummary } from '@/services/omnicart/reviews';
 
 const SITE_URL = 'https://vnsh.com';
 const BRAND_NAME = 'VNSH Holster';
@@ -21,8 +21,8 @@ function stripHtml(html: string): string {
  * Generates schema.org/Product with Offer or AggregateOffer.
  */
 export function generateProductJsonLd(
-  product: MedusaProduct,
-  selectedVariant?: MedusaProductVariant,
+  product: OmnicartProduct,
+  selectedVariant?: OmnicartProductVariant,
   productContent?: ProductContent,
   reviewSummary?: ReviewSummary | null
 ): Record<string, unknown> {

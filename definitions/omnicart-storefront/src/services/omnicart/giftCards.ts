@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 import { getAuthHeaders } from '@/lib/util/cookies';
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface GiftCard {
   id: string;
@@ -46,7 +46,7 @@ export interface PurchaseGiftCardRequest {
  */
 export const getGiftCardByCode = async (code: string): Promise<GiftCard | null> => {
   try {
-    const response = await medusaClient.fetch(`/store/gift-cards/${code}`, {
+    const response = await omnicartClient.fetch(`/store/gift-cards/${code}`, {
       method: 'GET'
     });
 
@@ -56,7 +56,7 @@ export const getGiftCardByCode = async (code: string): Promise<GiftCard | null> 
     if (error instanceof Response && error.status === 404) {
       return null;
     }
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -102,7 +102,7 @@ export const applyGiftCardToCart = async (cartId: string, giftCardCode: string):
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch(`/store/carts/${cartId}/gift-cards`, {
+    const response = await omnicartClient.fetch(`/store/carts/${cartId}/gift-cards`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ code: giftCardCode })
@@ -110,7 +110,7 @@ export const applyGiftCardToCart = async (cartId: string, giftCardCode: string):
 
     return (response as any)?.cart;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -119,13 +119,13 @@ export const applyGiftCardToCart = async (cartId: string, giftCardCode: string):
  */
 export const removeGiftCardFromCart = async (cartId: string, giftCardCode: string): Promise<any> => {
   try {
-    const response = await medusaClient.fetch(`/store/carts/${cartId}/gift-cards/${giftCardCode}`, {
+    const response = await omnicartClient.fetch(`/store/carts/${cartId}/gift-cards/${giftCardCode}`, {
       method: 'DELETE'
     });
 
     return (response as any)?.cart;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -144,7 +144,7 @@ export const purchaseGiftCard = async (request: PurchaseGiftCardRequest): Promis
 
     // In a real implementation, this would create an order with a gift card product
     // For now, we'll simulate the response
-    const response = await medusaClient.fetch('/store/gift-cards/purchase', {
+    const response = await omnicartClient.fetch('/store/gift-cards/purchase', {
       method: 'POST',
       headers,
       body: JSON.stringify(request)
@@ -166,7 +166,7 @@ export const purchaseGiftCard = async (request: PurchaseGiftCardRequest): Promis
       gift_card_code: mockGiftCardCode
     };
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -177,7 +177,7 @@ export const getCustomerGiftCards = async (): Promise<GiftCard[]> => {
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch('/store/customers/me/gift-cards', {
+    const response = await omnicartClient.fetch('/store/customers/me/gift-cards', {
       headers
     });
 
@@ -216,7 +216,7 @@ export const getGiftCardTransactions = async (giftCardId: string): Promise<GiftC
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch(`/store/gift-cards/${giftCardId}/transactions`, {
+    const response = await omnicartClient.fetch(`/store/gift-cards/${giftCardId}/transactions`, {
       headers
     });
 
@@ -257,7 +257,7 @@ export const checkGiftCardBalance = async (code: string): Promise<{
       expires_at: giftCard.ends_at
     };
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 

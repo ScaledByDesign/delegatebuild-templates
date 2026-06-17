@@ -17,7 +17,7 @@ interface RequestOptions {
   headers?: Record<string, string>;
 }
 
-export class MedusaAdminClient {
+export class OmnicartAdminClient {
   private readonly baseUrl: string;
   private readonly token: string;
 
@@ -169,9 +169,9 @@ export class MedusaAdminClient {
 // Create a singleton instance
 // Note: You'll need to provide the admin token securely
 // This is a placeholder - in production, you'd want to handle auth properly
-let adminClient: MedusaAdminClient | null = null;
+let adminClient: OmnicartAdminClient | null = null;
 
-export function getAdminClient(): MedusaAdminClient {
+export function getAdminClient(): OmnicartAdminClient {
   if (!adminClient) {
     // Use the same backend URL logic as the main medusa client
     const baseUrl = OMNICART_BACKEND_URL;
@@ -182,7 +182,7 @@ export function getAdminClient(): MedusaAdminClient {
     const token = localStorage.getItem('medusa_admin_token') || '';
 
     console.log('Creating admin client with:', { baseUrl, hasToken: !!token });
-    adminClient = new MedusaAdminClient({ baseUrl, token });
+    adminClient = new OmnicartAdminClient({ baseUrl, token });
   }
   return adminClient;
 }

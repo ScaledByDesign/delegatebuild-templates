@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { setTimeout as delay } from "timers/promises"
-import type { ShopifyMedusaConfig } from "./config.ts"
+import type { ShopifyOmnicartConfig } from "./config.ts"
 
 interface RequestOptions {
   method?: string
@@ -11,7 +11,7 @@ interface RequestOptions {
   skipRetry?: boolean
 }
 
-export interface MedusaProduct {
+export interface OmnicartProduct {
   id: string
   title: string
   handle: string
@@ -39,20 +39,20 @@ export interface MedusaProduct {
   updated_at: string
 }
 
-export interface MedusaCollection {
+export interface OmnicartCollection {
   id: string
   title: string
   handle: string
 }
 
-export interface MedusaSalesChannel {
+export interface OmnicartSalesChannel {
   id: string
   name: string
   description?: string
   is_disabled: boolean
 }
 
-export interface MedusaStockLocation {
+export interface OmnicartStockLocation {
   id: string
   name: string
   address: {
@@ -67,7 +67,7 @@ export interface MedusaStockLocation {
   metadata?: Record<string, unknown>
 }
 
-export interface MedusaInventoryItem {
+export interface OmnicartInventoryItem {
   id: string
   sku?: string
   origin_country?: string
@@ -82,7 +82,7 @@ export interface MedusaInventoryItem {
   metadata?: Record<string, unknown>
 }
 
-export interface MedusaProductVariant {
+export interface OmnicartProductVariant {
   id: string
   title: string
   sku: string | null
@@ -94,7 +94,7 @@ export interface MedusaProductVariant {
   metadata?: Record<string, unknown>
 }
 
-export interface MedusaCustomer {
+export interface OmnicartCustomer {
   id: string
   email: string
   first_name?: string
@@ -105,12 +105,12 @@ export interface MedusaCustomer {
   metadata?: Record<string, unknown>
 }
 
-export interface MedusaOrder {
+export interface OmnicartOrder {
   id: string
   display_id: number
   status: string
   customer_id?: string
-  customer?: MedusaCustomer
+  customer?: OmnicartCustomer
   email?: string
   currency_code: string
   total: number
@@ -124,20 +124,20 @@ export interface MedusaOrder {
     unit_price: number
     total: number
     variant_id?: string
-    variant?: MedusaProductVariant
+    variant?: OmnicartProductVariant
   }>
   billing_address?: any
   shipping_address?: any
   metadata?: Record<string, unknown>
 }
 
-export class MedusaAdminClient {
+export class OmnicartAdminClient {
   private readonly baseUrl: string
   private readonly token: string
   private readonly timeout: number
   private readonly salesChannelId?: string
 
-  constructor(config: ShopifyMedusaConfig) {
+  constructor(config: ShopifyOmnicartConfig) {
     this.baseUrl = `${config.medusaAdminUrl}/admin`
     this.token = config.medusaAdminToken
     this.timeout = config.requestTimeoutMs
@@ -193,16 +193,16 @@ export class MedusaAdminClient {
     }
   }
 
-  private filterProductsBySalesChannel(products: MedusaProduct[] = []): MedusaProduct[] {
+  private filterProductsBySalesChannel(products: OmnicartProduct[] = []): OmnicartProduct[] {
     if (!this.salesChannelId) return products
     return products.filter((product) =>
       (product.sales_channels ?? []).some((channel) => channel.id === this.salesChannelId)
     )
   }
 
-  async listProductsByShopifyId(shopifyProductId: string): Promise<MedusaProduct[]> {
+  async listProductsByShopifyId(shopifyProductId: string): Promise<OmnicartProduct[]> {
     // Note: Medusa API metadata filtering is broken, so we need to filter client-side
-    const response = await this.request<{ products: MedusaProduct[] }>("/products", {
+    const response = await this.request<{ products: OmnicartProduct[] }>("/products", {
       query: {
         fields: "*variants,*options,*variants.prices,*metadata,*images,*sales_channels",
         limit: 100, // Get more products to search through
@@ -219,8 +219,8 @@ export class MedusaAdminClient {
     return matchingProducts
   }
 
-  async retrieveProduct(productId: string): Promise<MedusaProduct> {
-    const response = await this.request<{ product: MedusaProduct }>(`/products/${productId}`, {
+  async retrieveProduct(productId: string): Promise<OmnicartProduct> {
+    const response = await this.request<{ product: OmnicartProduct }>(`/products/${productId}`, {
       query: {
         fields: "*variants,*options,*variants.prices,*metadata,*images,*sales_channels",
       },
@@ -228,8 +228,8 @@ export class MedusaAdminClient {
     return response.product
   }
 
-  async listProducts(limit: number = 100, offset: number = 0): Promise<MedusaProduct[]> {
-    const response = await this.request<{ products: MedusaProduct[] }>(`/products`, {
+  async listProducts(limit: number = 100, offset: number = 0): Promise<OmnicartProduct[]> {
+    const response = await this.request<{ products: OmnicartProduct[] }>(`/products`, {
       query: {
         limit: limit.toString(),
         offset: offset.toString(),
@@ -239,16 +239,16 @@ export class MedusaAdminClient {
     return this.filterProductsBySalesChannel(response.products ?? [])
   }
 
-  async createProduct(payload: Record<string, unknown>): Promise<MedusaProduct> {
-    const response = await this.request<{ product: MedusaProduct }>("/products", {
+  async createProduct(payload: Record<string, unknown>): Promise<OmnicartProduct> {
+    const response = await this.request<{ product: OmnicartProduct }>("/products", {
       method: "POST",
       body: payload,
     })
     return response.product
   }
 
-  async updateProduct(productId: string, payload: Record<string, unknown>): Promise<MedusaProduct> {
-    const response = await this.request<{ product: MedusaProduct }>(`/products/${productId}`, {
+  async updateProduct(productId: string, payload: Record<string, unknown>): Promise<OmnicartProduct> {
+    const response = await this.request<{ product: OmnicartProduct }>(`/products/${productId}`, {
       method: "POST",
       body: payload,
     })
@@ -452,30 +452,30 @@ export class MedusaAdminClient {
     }
   }
 
-  async listCollections(): Promise<MedusaCollection[]> {
-    const response = await this.request<{ collections: MedusaCollection[] }>("/collections", {
+  async listCollections(): Promise<OmnicartCollection[]> {
+    const response = await this.request<{ collections: OmnicartCollection[] }>("/collections", {
       query: { limit: 100 },
     })
     return response.collections ?? []
   }
 
-  async createCollection(payload: { title: string; handle?: string }): Promise<MedusaCollection> {
-    const response = await this.request<{ collection: MedusaCollection }>("/collections", {
+  async createCollection(payload: { title: string; handle?: string }): Promise<OmnicartCollection> {
+    const response = await this.request<{ collection: OmnicartCollection }>("/collections", {
       method: "POST",
       body: payload,
     })
     return response.collection
   }
 
-  async listSalesChannels(): Promise<MedusaSalesChannel[]> {
-    const response = await this.request<{ sales_channels: MedusaSalesChannel[] }>("/sales-channels", {
+  async listSalesChannels(): Promise<OmnicartSalesChannel[]> {
+    const response = await this.request<{ sales_channels: OmnicartSalesChannel[] }>("/sales-channels", {
       query: { limit: 100 },
     })
     return response.sales_channels ?? []
   }
 
-  async createSalesChannel(payload: { name: string; description?: string }): Promise<MedusaSalesChannel> {
-    const response = await this.request<{ sales_channel: MedusaSalesChannel }>("/sales-channels", {
+  async createSalesChannel(payload: { name: string; description?: string }): Promise<OmnicartSalesChannel> {
+    const response = await this.request<{ sales_channel: OmnicartSalesChannel }>("/sales-channels", {
       method: "POST",
       body: payload,
     })
@@ -485,8 +485,8 @@ export class MedusaAdminClient {
 
 
   // Stock Location methods
-  async listStockLocations(): Promise<MedusaStockLocation[]> {
-    const response = await this.request<{ stock_locations: MedusaStockLocation[] }>("/stock-locations", {
+  async listStockLocations(): Promise<OmnicartStockLocation[]> {
+    const response = await this.request<{ stock_locations: OmnicartStockLocation[] }>("/stock-locations", {
       query: { limit: 100 },
     })
     return response.stock_locations ?? []
@@ -496,8 +496,8 @@ export class MedusaAdminClient {
     name: string
     address: any
     metadata?: Record<string, unknown>
-  }): Promise<MedusaStockLocation> {
-    const response = await this.request<{ stock_location: MedusaStockLocation }>("/stock-locations", {
+  }): Promise<OmnicartStockLocation> {
+    const response = await this.request<{ stock_location: OmnicartStockLocation }>("/stock-locations", {
       method: "POST",
       body: payload,
     })
@@ -508,8 +508,8 @@ export class MedusaAdminClient {
     name?: string
     address?: any
     metadata?: Record<string, unknown>
-  }): Promise<MedusaStockLocation> {
-    const response = await this.request<{ stock_location: MedusaStockLocation }>(`/stock-locations/${id}`, {
+  }): Promise<OmnicartStockLocation> {
+    const response = await this.request<{ stock_location: OmnicartStockLocation }>(`/stock-locations/${id}`, {
       method: "POST",
       body: payload,
     })
@@ -517,8 +517,8 @@ export class MedusaAdminClient {
   }
 
   // Inventory Item methods
-  async listInventoryItems(params?: Record<string, unknown>): Promise<MedusaInventoryItem[]> {
-    const response = await this.request<{ inventory_items: MedusaInventoryItem[] }>("/inventory-items", {
+  async listInventoryItems(params?: Record<string, unknown>): Promise<OmnicartInventoryItem[]> {
+    const response = await this.request<{ inventory_items: OmnicartInventoryItem[] }>("/inventory-items", {
       query: params,
     })
     return response.inventory_items ?? []
@@ -538,8 +538,8 @@ export class MedusaAdminClient {
     width?: number
     requires_shipping?: boolean
     metadata?: Record<string, unknown>
-  }): Promise<MedusaInventoryItem> {
-    const response = await this.request<{ inventory_item: MedusaInventoryItem }>("/inventory-items", {
+  }): Promise<OmnicartInventoryItem> {
+    const response = await this.request<{ inventory_item: OmnicartInventoryItem }>("/inventory-items", {
       method: "POST",
       body: payload,
     })
@@ -572,23 +572,23 @@ export class MedusaAdminClient {
   }
 
   // Customer methods
-  async listCustomers(limit: number = 100, offset: number = 0): Promise<MedusaCustomer[]> {
-    const response = await this.request<{ customers: MedusaCustomer[] }>("/customers", {
+  async listCustomers(limit: number = 100, offset: number = 0): Promise<OmnicartCustomer[]> {
+    const response = await this.request<{ customers: OmnicartCustomer[] }>("/customers", {
       query: { limit: limit.toString(), offset: offset.toString() },
     })
     return response.customers ?? []
   }
 
-  async createCustomer(payload: Record<string, unknown>): Promise<MedusaCustomer> {
-    const response = await this.request<{ customer: MedusaCustomer }>("/customers", {
+  async createCustomer(payload: Record<string, unknown>): Promise<OmnicartCustomer> {
+    const response = await this.request<{ customer: OmnicartCustomer }>("/customers", {
       method: "POST",
       body: payload,
     })
     return response.customer
   }
 
-  async updateCustomer(customerId: string, payload: Record<string, unknown>): Promise<MedusaCustomer> {
-    const response = await this.request<{ customer: MedusaCustomer }>(`/customers/${customerId}`, {
+  async updateCustomer(customerId: string, payload: Record<string, unknown>): Promise<OmnicartCustomer> {
+    const response = await this.request<{ customer: OmnicartCustomer }>(`/customers/${customerId}`, {
       method: "POST",
       body: payload,
     })
@@ -596,15 +596,15 @@ export class MedusaAdminClient {
   }
 
   // Order methods
-  async listOrders(limit: number = 100, offset: number = 0): Promise<MedusaOrder[]> {
-    const response = await this.request<{ orders: MedusaOrder[] }>("/orders", {
+  async listOrders(limit: number = 100, offset: number = 0): Promise<OmnicartOrder[]> {
+    const response = await this.request<{ orders: OmnicartOrder[] }>("/orders", {
       query: { limit: limit.toString(), offset: offset.toString() },
     })
     return response.orders ?? []
   }
 
-  async createOrder(payload: Record<string, unknown>): Promise<MedusaOrder> {
-    const response = await this.request<{ order: MedusaOrder }>("/orders", {
+  async createOrder(payload: Record<string, unknown>): Promise<OmnicartOrder> {
+    const response = await this.request<{ order: OmnicartOrder }>("/orders", {
       method: "POST",
       body: payload,
     })
@@ -618,13 +618,13 @@ export class MedusaAdminClient {
     })
   }
 
-  async getProduct(productId: string): Promise<MedusaProduct> {
+  async getProduct(productId: string): Promise<OmnicartProduct> {
     return this.retrieveProduct(productId)
   }
 
   // Helper method to get products with Shopify metadata
-  async listProductsWithShopifyMetadata(): Promise<MedusaProduct[]> {
-    const response = await this.request<{ products: MedusaProduct[] }>("/products", {
+  async listProductsWithShopifyMetadata(): Promise<OmnicartProduct[]> {
+    const response = await this.request<{ products: OmnicartProduct[] }>("/products", {
       query: {
         limit: 100,
         expand: "variants,variants.prices",

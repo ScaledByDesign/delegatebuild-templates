@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useLoyaltyManagement } from '@/hooks/useLoyalty';
-import { formatPoints, type LoyaltyReward } from '@/services/medusa/loyalty';
+import { formatPoints, type LoyaltyReward } from '@/services/omnicart/loyalty';
 import { Gift, Percent, Truck, Crown, AlertCircle, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 

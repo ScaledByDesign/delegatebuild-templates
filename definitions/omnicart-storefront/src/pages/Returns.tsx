@@ -25,7 +25,7 @@ import {
   getReturnShippingOptions,
   type ReturnItem,
   type ReturnReason
-} from '@/services/medusa/returns';
+} from '@/services/omnicart/returns';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 

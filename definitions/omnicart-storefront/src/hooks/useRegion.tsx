@@ -1,12 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useState } from "react";
-import { getDefaultRegion, getRegionByCountry, MedusaRegion } from "@/services/medusa/regions";
+import { getDefaultRegion, getRegionByCountry, OmnicartRegion } from "@/services/omnicart/regions";
 import { useToast } from "@/hooks/use-toast";
 
 type RegionContextType = {
-  region: MedusaRegion | null;
+  region: OmnicartRegion | null;
   isLoading: boolean;
-  setRegion: (region: MedusaRegion) => void;
+  setRegion: (region: OmnicartRegion) => void;
   setRegionByCountry: (countryCode: string) => Promise<boolean>;
   formatPrice: (amount: number) => string;
   currencyCode: string;
@@ -15,7 +15,7 @@ type RegionContextType = {
 const RegionContext = createContext<RegionContextType | undefined>(undefined);
 
 export const RegionProvider = ({ children }: { children: React.ReactNode }) => {
-  const [region, setRegionState] = useState<MedusaRegion | null>(null);
+  const [region, setRegionState] = useState<OmnicartRegion | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
@@ -50,7 +50,7 @@ export const RegionProvider = ({ children }: { children: React.ReactNode }) => {
     initRegion();
   }, [toast, region]);
 
-  const setRegion = (newRegion: MedusaRegion) => {
+  const setRegion = (newRegion: OmnicartRegion) => {
     setRegionState(newRegion);
     localStorage.setItem('medusa_region_id', newRegion.id);
   };

@@ -1,7 +1,7 @@
-import { medusaClient } from "../../lib/medusa-client"
-import medusaError from "../../lib/util/medusa-error"
+import { omnicartClient } from "../../lib/omnicart-client"
+import omnicartError from "../../lib/util/omnicart-error"
 
-export interface MedusaCategory {
+export interface OmnicartCategory {
   id: string
   name: string
   handle: string
@@ -10,8 +10,8 @@ export interface MedusaCategory {
   is_internal: boolean
   rank: number
   parent_category_id?: string
-  parent_category?: MedusaCategory
-  category_children?: MedusaCategory[]
+  parent_category?: OmnicartCategory
+  category_children?: OmnicartCategory[]
   products?: {
     id: string
     title: string
@@ -24,7 +24,7 @@ export interface MedusaCategory {
 }
 
 export interface CategoriesResponse {
-  product_categories: MedusaCategory[]
+  product_categories: OmnicartCategory[]
   count: number
   offset: number
   limit: number
@@ -38,9 +38,9 @@ export const listCategories = async (params?: {
   offset?: number
   parent_category_id?: string
   include_descendants_tree?: boolean
-}): Promise<{ categories: MedusaCategory[]; count: number }> => {
+}): Promise<{ categories: OmnicartCategory[]; count: number }> => {
   try {
-    const response = await medusaClient.fetch<CategoriesResponse>(
+    const response = await omnicartClient.fetch<CategoriesResponse>(
       "/store/product-categories",
       {
         method: "GET",
@@ -68,9 +68,9 @@ export const listCategories = async (params?: {
 /**
  * Get category by ID
  */
-export const getCategory = async (categoryId: string): Promise<MedusaCategory | null> => {
+export const getCategory = async (categoryId: string): Promise<OmnicartCategory | null> => {
   try {
-    const response = await medusaClient.fetch<{ product_category: MedusaCategory }>(
+    const response = await omnicartClient.fetch<{ product_category: OmnicartCategory }>(
       `/store/product-categories/${categoryId}`,
       {
         method: "GET",
@@ -91,7 +91,7 @@ export const getCategory = async (categoryId: string): Promise<MedusaCategory | 
 /**
  * Get category by handle
  */
-export const getCategoryByHandle = async (handle: string): Promise<MedusaCategory | null> => {
+export const getCategoryByHandle = async (handle: string): Promise<OmnicartCategory | null> => {
   try {
     const { categories } = await listCategories()
     
@@ -106,7 +106,7 @@ export const getCategoryByHandle = async (handle: string): Promise<MedusaCategor
 /**
  * Get root categories (categories without parent)
  */
-export const getRootCategories = async (): Promise<MedusaCategory[]> => {
+export const getRootCategories = async (): Promise<OmnicartCategory[]> => {
   try {
     const { categories } = await listCategories()
     return categories.filter(category => !category.parent_category_id)
@@ -119,7 +119,7 @@ export const getRootCategories = async (): Promise<MedusaCategory[]> => {
 /**
  * Get category tree (hierarchical structure)
  */
-export const getCategoryTree = async (): Promise<MedusaCategory[]> => {
+export const getCategoryTree = async (): Promise<OmnicartCategory[]> => {
   try {
     const { categories } = await listCategories({ include_descendants_tree: true })
     return categories.filter(category => !category.parent_category_id)

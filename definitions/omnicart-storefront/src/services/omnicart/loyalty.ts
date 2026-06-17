@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 import { getAuthHeaders } from '@/lib/util/cookies';
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface LoyaltyAccount {
   id: string;
@@ -74,7 +74,7 @@ export const getLoyaltyAccount = async (): Promise<LoyaltyAccount> => {
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch('/store/customers/me/loyalty', {
+    const response = await omnicartClient.fetch('/store/customers/me/loyalty', {
       headers
     });
 
@@ -109,7 +109,7 @@ export const getLoyaltyAccount = async (): Promise<LoyaltyAccount> => {
  */
 export const getLoyaltyTiers = async (): Promise<LoyaltyTier[]> => {
   try {
-    const response = await medusaClient.fetch('/store/loyalty/tiers');
+    const response = await omnicartClient.fetch('/store/loyalty/tiers');
     return (response as any)?.tiers;
   } catch (error) {
     // Return mock tiers if API not available
@@ -167,7 +167,7 @@ export const getPointsHistory = async (limit = 20, offset = 0): Promise<{
     params.append('limit', limit.toString());
     params.append('offset', offset.toString());
 
-    const response = await medusaClient.fetch(`/store/customers/me/loyalty/transactions?${params.toString()}`, {
+    const response = await omnicartClient.fetch(`/store/customers/me/loyalty/transactions?${params.toString()}`, {
       headers
     });
 
@@ -218,7 +218,7 @@ export const getPointsHistory = async (limit = 20, offset = 0): Promise<{
  */
 export const getLoyaltyRewards = async (): Promise<LoyaltyReward[]> => {
   try {
-    const response = await medusaClient.fetch('/store/loyalty/rewards');
+    const response = await omnicartClient.fetch('/store/loyalty/rewards');
     return (response as any)?.rewards;
   } catch (error) {
     // Return mock rewards if API not available
@@ -283,7 +283,7 @@ export const redeemReward = async (request: RedeemRewardRequest): Promise<{
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch('/store/loyalty/redeem', {
+    const response = await omnicartClient.fetch('/store/loyalty/redeem', {
       method: 'POST',
       headers,
       body: JSON.stringify(request)
@@ -295,7 +295,7 @@ export const redeemReward = async (request: RedeemRewardRequest): Promise<{
       message: 'Points redeemed successfully'
     };
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -304,7 +304,7 @@ export const redeemReward = async (request: RedeemRewardRequest): Promise<{
  */
 export const getPointsEarningRules = async (): Promise<PointsEarningRule[]> => {
   try {
-    const response = await medusaClient.fetch('/store/loyalty/earning-rules');
+    const response = await omnicartClient.fetch('/store/loyalty/earning-rules');
     return (response as any)?.rules;
   } catch (error) {
     // Return mock rules if API not available
@@ -363,7 +363,7 @@ export const calculatePurchasePoints = async (orderTotal: number): Promise<{
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch('/store/loyalty/calculate-points', {
+    const response = await omnicartClient.fetch('/store/loyalty/calculate-points', {
       method: 'POST',
       headers,
       body: JSON.stringify({ order_total: orderTotal })

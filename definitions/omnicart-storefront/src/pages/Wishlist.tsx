@@ -11,7 +11,7 @@ import {
   formatWishlistItemPrice,
   getWishlistItemStatus,
   shareWishlist
-} from '@/services/medusa/wishlist';
+} from '@/services/omnicart/wishlist';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import ResponsiveBreadcrumb from '@/components/ResponsiveBreadcrumb';

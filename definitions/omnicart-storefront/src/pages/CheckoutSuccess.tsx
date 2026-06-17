@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { getOrderById } from '@/services/medusa/orders';
+import { getOrderById } from '@/services/omnicart/orders';
 import KonnektiveOrderWidget from '@/components/KonnektiveOrderWidget';
 import { formatCurrency } from '@/lib/price';
 import { trackPurchase, identifyUser } from '@/hooks/useTracking';
@@ -70,8 +70,8 @@ const CheckoutSuccess = () => {
   // Fetch membership credentials when order data is loaded
   useEffect(() => {
     if (orderData?.id) {
-      import('@/lib/medusa-client').then(({ medusaClient }) => {
-        medusaClient.get<{ membership: { has_membership: boolean; status: string | null; password: string | null } }>(
+      import('@/lib/omnicart-client').then(({ omnicartClient }) => {
+        omnicartClient.get<{ membership: { has_membership: boolean; status: string | null; password: string | null } }>(
           '/store/membership/status',
           { query: { order_id: orderData.id }, cache: 'no-store' }
         ).then((res) => {

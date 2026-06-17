@@ -1,5 +1,5 @@
 import { KonnektiveApiClient } from "./konnektiveClient"
-import { KonnektiveMedusaAdminClient } from "./medusaAdminClient"
+import { KonnektiveOmnicartAdminClient } from "./omnicartAdminClient"
 import { loadConfig } from "./config"
 import {
   buildCustomerUpsertPayload,
@@ -36,13 +36,13 @@ export interface SyncResult {
 
 export class KonnektiveSync {
   private konnektiveClient: KonnektiveApiClient
-  private medusaClient: KonnektiveMedusaAdminClient
+  private omnicartClient: KonnektiveOmnicartAdminClient
   private config: ReturnType<typeof loadConfig>
 
   constructor() {
     this.config = loadConfig()
     this.konnektiveClient = new KonnektiveApiClient(this.config)
-    this.medusaClient = new KonnektiveMedusaAdminClient(this.config)
+    this.omnicartClient = new KonnektiveOmnicartAdminClient(this.config)
   }
 
   /**
@@ -342,7 +342,7 @@ export class KonnektiveSync {
         this.config.medusaSalesChannelId
       )
 
-      medusaProduct = await this.medusaClient.createProduct(productPayload as unknown as Record<string, unknown>)
+      medusaProduct = await this.omnicartClient.createProduct(productPayload as unknown as Record<string, unknown>)
       console.log(`✅ Created new product: ${medusaProduct.title}`)
 
       // Add default variant
@@ -352,7 +352,7 @@ export class KonnektiveSync {
     // Add to sales channel if specified
     if (this.config.medusaSalesChannelId && !dryRun) {
       try {
-        await this.medusaClient.addProductToSalesChannel(medusaProduct.id, this.config.medusaSalesChannelId)
+        await this.omnicartClient.addProductToSalesChannel(medusaProduct.id, this.config.medusaSalesChannelId)
       } catch (error) {
         console.warn(`⚠️  Failed to add product to sales channel: ${error instanceof Error ? error.message : String(error)}`)
       }
@@ -377,22 +377,22 @@ export class KonnektiveSync {
     let variant: any
     if (medusaProduct.variants && medusaProduct.variants.length > 0) {
       // Update existing variant
-      await this.medusaClient.updateVariant(
+      await this.omnicartClient.updateVariant(
         medusaProduct.id,
         medusaProduct.variants[0].id,
         variantPayload as unknown as Record<string, unknown>
       )
     } else {
       // Create new variant
-      await this.medusaClient.createVariant(medusaProduct.id, variantPayload as unknown as Record<string, unknown>)
+      await this.omnicartClient.createVariant(medusaProduct.id, variantPayload as unknown as Record<string, unknown>)
     }
 
     // Update inventory if location is configured
     if (this.config.medusaInventoryLocationId && konnektiveProduct.stockQuantity !== undefined) {
       try {
-        const inventoryItems = await this.medusaClient.listInventoryItems({ variant_id: variant.id })
+        const inventoryItems = await this.omnicartClient.listInventoryItems({ variant_id: variant.id })
         if (inventoryItems.length > 0) {
-          await this.medusaClient.updateInventoryLevel(
+          await this.omnicartClient.updateInventoryLevel(
             inventoryItems[0].id,
             this.config.medusaInventoryLocationId,
             konnektiveProduct.stockQuantity
@@ -409,7 +409,7 @@ export class KonnektiveSync {
    */
   private async syncSingleCustomer(konnektiveCustomer: KonnektiveCustomer, dryRun: boolean): Promise<void> {
     // Check if customer already exists in Medusa
-    const existingCustomers = await this.medusaClient.listCustomersByKonnektiveId(konnektiveCustomer.customerId)
+    const existingCustomers = await this.omnicartClient.listCustomersByKonnektiveId(konnektiveCustomer.customerId)
 
     const customerPayload = buildCustomerUpsertPayload(
       konnektiveCustomer,
@@ -423,11 +423,11 @@ export class KonnektiveSync {
 
     if (existingCustomers.length > 0) {
       // Update existing customer
-      await this.medusaClient.updateCustomer(existingCustomers[0].id, customerPayload as unknown as Record<string, unknown>)
+      await this.omnicartClient.updateCustomer(existingCustomers[0].id, customerPayload as unknown as Record<string, unknown>)
       console.log(`📝 Updated customer: ${customerPayload.email}`)
     } else {
       // Create new customer
-      await this.medusaClient.createCustomer(customerPayload as unknown as Record<string, unknown>)
+      await this.omnicartClient.createCustomer(customerPayload as unknown as Record<string, unknown>)
       console.log(`🆕 Created customer: ${customerPayload.email}`)
     }
   }
@@ -437,7 +437,7 @@ export class KonnektiveSync {
    */
   private async syncSingleOrder(konnektiveOrder: KonnektiveOrder, dryRun: boolean): Promise<void> {
     // Check if order already exists in Medusa
-    const existingOrders = await this.medusaClient.listOrdersByKonnektiveId(konnektiveOrder.orderId)
+    const existingOrders = await this.omnicartClient.listOrdersByKonnektiveId(konnektiveOrder.orderId)
 
     if (existingOrders.length > 0) {
       console.log(`⏭️  Order ${konnektiveOrder.orderId} already exists, skipping...`)
@@ -460,7 +460,7 @@ export class KonnektiveSync {
     }
 
     // Create new order
-    await this.medusaClient.createOrder(orderPayload as unknown as Record<string, unknown>)
+    await this.omnicartClient.createOrder(orderPayload as unknown as Record<string, unknown>)
     console.log(`🆕 Created order: ${konnektiveOrder.orderId}`)
   }
 
@@ -469,7 +469,7 @@ export class KonnektiveSync {
    */
   private async resolveCustomerForOrder(konnektiveOrder: KonnektiveOrder, dryRun: boolean): Promise<any | null> {
     // Try to find existing customer by Konnektive ID
-    const existingCustomers = await this.medusaClient.listCustomersByKonnektiveId(konnektiveOrder.customerId)
+    const existingCustomers = await this.omnicartClient.listCustomersByKonnektiveId(konnektiveOrder.customerId)
 
     if (existingCustomers.length > 0) {
       return existingCustomers[0]
@@ -486,7 +486,7 @@ export class KonnektiveSync {
 
         if (!dryRun) {
           // Fetch the newly created customer
-          const newCustomers = await this.medusaClient.listCustomersByKonnektiveId(konnektiveOrder.customerId)
+          const newCustomers = await this.omnicartClient.listCustomersByKonnektiveId(konnektiveOrder.customerId)
           return newCustomers.length > 0 ? newCustomers[0] : null
         }
       }
@@ -513,7 +513,7 @@ export class KonnektiveSync {
     }
 
     // Get all products for matching
-    const allProducts = await this.medusaClient.listProducts(500, 0)
+    const allProducts = await this.omnicartClient.listProducts(500, 0)
 
     // Step 1: Exact SKU match
     for (const product of allProducts) {
@@ -757,7 +757,7 @@ export class KonnektiveSync {
     }
 
     try {
-      await this.medusaClient.createVariant(medusaProduct.id, variantPayload as unknown as Record<string, unknown>)
+      await this.omnicartClient.createVariant(medusaProduct.id, variantPayload as unknown as Record<string, unknown>)
       console.log(`✅ Created variant for product: ${medusaProduct.title}`)
 
       // Update inventory if needed
@@ -798,7 +798,7 @@ export class KonnektiveSync {
     // Add missing options to product
     for (const optionTitle of missingOptions) {
       try {
-        await this.medusaClient.addProductOption(medusaProduct.id, {
+        await this.omnicartClient.addProductOption(medusaProduct.id, {
           title: optionTitle,
           values: [{ value: suggestedOptions[optionTitle] }]
         })
@@ -809,7 +809,7 @@ export class KonnektiveSync {
     }
 
     // Refresh product data to get updated options
-    const updatedProduct = await this.medusaClient.getProduct(medusaProduct.id)
+    const updatedProduct = await this.omnicartClient.getProduct(medusaProduct.id)
     Object.assign(medusaProduct, updatedProduct)
   }
 
@@ -869,7 +869,7 @@ export class KonnektiveSync {
    */
   private async checkVariantSKUConflict(sku: string, currentProductId: string): Promise<boolean> {
     try {
-      const allProducts = await this.medusaClient.listProducts(500, 0)
+      const allProducts = await this.omnicartClient.listProducts(500, 0)
 
       for (const product of allProducts) {
         if (product.id === currentProductId) continue // Skip current product
@@ -903,7 +903,7 @@ export class KonnektiveSync {
     }
 
     try {
-      await this.medusaClient.updateVariant(medusaProduct.id, existingVariant.id, updatePayload as unknown as Record<string, unknown>)
+      await this.omnicartClient.updateVariant(medusaProduct.id, existingVariant.id, updatePayload as unknown as Record<string, unknown>)
       console.log(`✅ Updated existing variant: ${existingVariant.title}`)
 
       // Update inventory if needed
@@ -922,7 +922,7 @@ export class KonnektiveSync {
     try {
       // This would need to be implemented based on your inventory management setup
       console.log(`📦 Would update inventory for variant ${variant.id}: ${stockQuantity} units`)
-      // await this.medusaClient.updateInventoryLevel(variant.id, stockQuantity)
+      // await this.omnicartClient.updateInventoryLevel(variant.id, stockQuantity)
     } catch (error) {
       console.warn(`⚠️  Failed to update inventory: ${error instanceof Error ? error.message : String(error)}`)
     }

@@ -9,11 +9,11 @@ import type {
   KonnektiveTransaction,
 } from "./konnektiveClient"
 import type {
-  MedusaProduct,
-  MedusaProductVariant,
-  MedusaCustomer,
-  MedusaOrder,
-} from "./medusaAdminClient"
+  OmnicartProduct,
+  OmnicartProductVariant,
+  OmnicartCustomer,
+  OmnicartOrder,
+} from "./omnicartAdminClient"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 

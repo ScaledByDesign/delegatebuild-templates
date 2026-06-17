@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { usePointsHistory } from '@/hooks/useLoyalty';
-import { formatPoints, type PointsTransaction } from '@/services/medusa/loyalty';
+import { formatPoints, type PointsTransaction } from '@/services/omnicart/loyalty';
 import { 
   TrendingUp, 
   TrendingDown, 

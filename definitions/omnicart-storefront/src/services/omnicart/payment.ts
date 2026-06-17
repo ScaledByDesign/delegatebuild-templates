@@ -1,5 +1,5 @@
-import { medusaClient } from "../../lib/medusa-client"
-import medusaError from "../../lib/util/medusa-error"
+import { omnicartClient } from "../../lib/omnicart-client"
+import omnicartError from "../../lib/util/omnicart-error"
 import { getAuthHeaders } from "../../lib/util/cookies"
 import { OMNICART_PUBLISHABLE_KEY } from "@/lib/omnicart-config"
 
@@ -38,7 +38,7 @@ export const listPaymentProviders = async (regionId: string): Promise<PaymentPro
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch<PaymentProvidersResponse>(
+    const response = await omnicartClient.fetch<PaymentProvidersResponse>(
       "/store/payment-providers",
       {
         method: "GET",
@@ -64,7 +64,7 @@ export const initializePaymentSessions = async (cartId: string): Promise<Payment
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch<PaymentSessionsResponse>(
+    const response = await omnicartClient.fetch<PaymentSessionsResponse>(
       `/store/carts/${cartId}/payment-sessions`,
       {
         method: "POST",
@@ -75,7 +75,7 @@ export const initializePaymentSessions = async (cartId: string): Promise<Payment
     return response.payment_sessions || []
   } catch (error) {
     console.error('Error initializing payment sessions:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -89,7 +89,7 @@ export const setPaymentSession = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       `/store/carts/${cartId}/payment-session`,
       {
         method: "POST",
@@ -106,7 +106,7 @@ export const setPaymentSession = async (
     return response
   } catch (error) {
     console.error('Error setting payment session:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -121,7 +121,7 @@ export const updatePaymentSession = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       `/store/carts/${cartId}/payment-sessions/${providerId}`,
       {
         method: "POST",
@@ -136,7 +136,7 @@ export const updatePaymentSession = async (
     return response
   } catch (error) {
     console.error('Error updating payment session:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -150,7 +150,7 @@ export const authorizePaymentSession = async (
   try {
     const headers = getStoreHeaders()
 
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       `/store/carts/${cartId}/payment-sessions/${providerId}/authorize`,
       {
         method: "POST",
@@ -161,6 +161,6 @@ export const authorizePaymentSession = async (
     return response
   } catch (error) {
     console.error('Error authorizing payment session:', error)
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }

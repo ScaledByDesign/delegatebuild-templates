@@ -1,20 +1,20 @@
-import type { KonnektiveMedusaConfig } from "./config"
+import type { KonnektiveOmnicartConfig } from "./config"
 
-// Re-use the existing Medusa types from Shopify integration
+// Re-use the existing OmniCart types from Shopify integration
 export type {
-  MedusaProduct,
-  MedusaProductVariant,
-  MedusaCollection,
-  MedusaCustomer,
-  MedusaOrder,
-  MedusaInventoryItem,
-} from "../shopify/medusaAdminClient"
+  OmnicartProduct,
+  OmnicartProductVariant,
+  OmnicartCollection,
+  OmnicartCustomer,
+  OmnicartOrder,
+  OmnicartInventoryItem,
+} from "../shopify/omnicartAdminClient"
 
-// Import the existing MedusaAdminClient and extend it
-import { MedusaAdminClient as BaseMedusaAdminClient } from "../shopify/medusaAdminClient"
+// Import the existing OmnicartAdminClient and extend it
+import { OmnicartAdminClient as BaseOmnicartAdminClient } from "../shopify/omnicartAdminClient"
 
-export class KonnektiveMedusaAdminClient extends BaseMedusaAdminClient {
-  constructor(config: KonnektiveMedusaConfig) {
+export class KonnektiveOmnicartAdminClient extends BaseOmnicartAdminClient {
+  constructor(config: KonnektiveOmnicartConfig) {
     // Create a compatible config for the parent class
     super({
       medusaAdminUrl: config.medusaAdminUrl,
@@ -31,7 +31,7 @@ export class KonnektiveMedusaAdminClient extends BaseMedusaAdminClient {
   // Konnektive-specific customer operations
   async listCustomersByKonnektiveId(konnektiveCustomerId: string): Promise<any[]> {
     const customers = await this.listCustomers(100, 0)
-    return customers.filter(customer => 
+    return customers.filter(customer =>
       customer.metadata?.konnektive_customer_id === konnektiveCustomerId
     )
   }
@@ -39,7 +39,7 @@ export class KonnektiveMedusaAdminClient extends BaseMedusaAdminClient {
   // Konnektive-specific product operations
   async listProductsByKonnektiveId(konnektiveProductId: string): Promise<any[]> {
     const products = await this.listProducts(100, 0)
-    return products.filter(product => 
+    return products.filter(product =>
       product.metadata?.konnektive_product_id === konnektiveProductId
     )
   }
@@ -47,7 +47,7 @@ export class KonnektiveMedusaAdminClient extends BaseMedusaAdminClient {
   // Konnektive-specific order operations
   async listOrdersByKonnektiveId(konnektiveOrderId: string): Promise<any[]> {
     const orders = await this.listOrders(100, 0)
-    return orders.filter(order => 
+    return orders.filter(order =>
       order.metadata?.konnektive_order_id === konnektiveOrderId
     )
   }

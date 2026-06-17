@@ -1,5 +1,5 @@
-import { medusaClient } from "../medusa-client"
-import medusaError from "../util/medusa-error"
+import { omnicartClient } from "../omnicart-client"
+import omnicartError from "../util/omnicart-error"
 import { getAuthHeaders, removeAuthToken, setAuthToken, getCartId, removeCartId } from "../util/cookies"
 
 // Define types for API responses
@@ -22,7 +22,7 @@ export const loginCustomer = async (email: string, password: string) => {
 
   try {
     // Use proper Medusa API auth method
-    const response = await medusaClient.post<AuthResponse>("/auth/customer/emailpass", { email, password })
+    const response = await omnicartClient.post<AuthResponse>("/auth/customer/emailpass", { email, password })
     const token = response.access_token
 
     // Store the JWT token in cookies
@@ -37,7 +37,7 @@ export const loginCustomer = async (email: string, password: string) => {
     const customer = await getCustomer()
     return customer
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -56,7 +56,7 @@ export const registerCustomer = async (
 
   try {
     // Step 1: Register authentication
-    const response = await medusaClient.post<AuthResponse>("/auth/customer/emailpass/register", {
+    const response = await omnicartClient.post<AuthResponse>("/auth/customer/emailpass/register", {
       email,
       password,
     })
@@ -75,14 +75,14 @@ export const registerCustomer = async (
       last_name: lastName,
     }
 
-    const { customer: createdCustomer } = await medusaClient.post<CustomerResponse>(
+    const { customer: createdCustomer } = await omnicartClient.post<CustomerResponse>(
       "/store/customers",
       customerForm,
       { headers }
     )
 
     // Step 4: Login again to get fresh token (Medusa pattern)
-    const loginResponse = await medusaClient.post<AuthResponse>("/auth/customer/emailpass", {
+    const loginResponse = await omnicartClient.post<AuthResponse>("/auth/customer/emailpass", {
       email,
       password,
     })
@@ -97,7 +97,7 @@ export const registerCustomer = async (
 
     return createdCustomer
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -115,7 +115,7 @@ export const getCustomer = async () => {
       return null
     }
 
-    const response = await medusaClient.get<CustomerResponse>(
+    const response = await omnicartClient.get<CustomerResponse>(
       "/store/customers/me",
       {
         headers,
@@ -140,7 +140,7 @@ export const getCustomer = async () => {
 export const logoutCustomer = async () => {
   try {
     // Use proper Medusa API logout
-    await medusaClient.post("/auth/session", { action: "logout" })
+    await omnicartClient.post("/auth/session", { action: "logout" })
 
     // Remove auth token
     removeAuthToken()
@@ -172,7 +172,7 @@ export const updateCustomer = async (data: Record<string, any>) => {
       return null
     }
 
-    const response = await medusaClient.fetch(
+    const response = await omnicartClient.fetch(
       "/store/customers/me",
       {
         method: "POST",
@@ -183,7 +183,7 @@ export const updateCustomer = async (data: Record<string, any>) => {
 
     return response.customer
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -196,7 +196,7 @@ export const requestPasswordReset = async (email: string) => {
   }
 
   try {
-    await medusaClient.fetch(
+    await omnicartClient.fetch(
       "/store/customers/password-token",
       {
         method: "POST",
@@ -209,7 +209,7 @@ export const requestPasswordReset = async (email: string) => {
 
     return true
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -226,7 +226,7 @@ export const resetPassword = async (
   }
 
   try {
-    await medusaClient.fetch(
+    await omnicartClient.fetch(
       "/store/customers/password-reset",
       {
         method: "POST",
@@ -239,7 +239,7 @@ export const resetPassword = async (
 
     return true
   } catch (error) {
-    throw medusaError(error)
+    throw omnicartError(error)
   }
 }
 
@@ -261,7 +261,7 @@ export const transferCart = async () => {
       return
     }
 
-    await medusaClient.post(`/store/carts/${cartId}/transfer`, {}, { headers })
+    await omnicartClient.post(`/store/carts/${cartId}/transfer`, {}, { headers })
   } catch (error) {
     console.error("Error transferring cart:", error)
     // Don't throw error as this is not critical for auth flow

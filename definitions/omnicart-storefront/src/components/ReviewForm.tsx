@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { InteractiveStarRating } from '@/components/StarRating';
 import { useReviewManagement } from '@/hooks/useReviews';
-import { validateReview, type CreateReviewRequest } from '@/services/medusa/reviews';
+import { validateReview, type CreateReviewRequest } from '@/services/omnicart/reviews';
 import { AlertCircle, CheckCircle } from 'lucide-react';
 
 interface ReviewFormProps {

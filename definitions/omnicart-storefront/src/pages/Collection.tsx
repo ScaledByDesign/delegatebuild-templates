@@ -3,8 +3,8 @@ import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import { getProducts, MedusaProduct } from '@/services/medusa/products';
-import { getCollectionByHandle } from '@/services/medusa/collections';
+import { getProducts, OmnicartProduct } from '@/services/omnicart/products';
+import { getCollectionByHandle } from '@/services/omnicart/collections';
 import ProductCard from '@/components/ProductCard';
 import ProductSort, { SortOption } from '@/components/ProductSort';
 import ProductFilter, { FilterOptions } from '@/components/ProductFilter';
@@ -29,7 +29,7 @@ interface Product {
 }
 
 // Transform Medusa product to UI product format
-const transformMedusaProduct = (medusaProduct: MedusaProduct): Product => {
+const transformMedusaProduct = (medusaProduct: OmnicartProduct): Product => {
   const variants = medusaProduct.variants || [];
   const cheapestVariant = variants.reduce((best, variant) => {
     const variantPrice = variant.calculated_price?.calculated_amount ?? variant.prices?.[0]?.amount ?? Number.POSITIVE_INFINITY;
@@ -94,7 +94,7 @@ const Collection = () => {
       const collection = await getCollectionByHandle(normalizedCategory || '');
       if (collection?.products) {
         return {
-          products: collection.products.map((product: any) => transformMedusaProduct(product as MedusaProduct)),
+          products: collection.products.map((product: any) => transformMedusaProduct(product as OmnicartProduct)),
           collection
         };
       }

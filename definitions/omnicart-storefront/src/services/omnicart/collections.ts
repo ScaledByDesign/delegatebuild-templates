@@ -1,8 +1,8 @@
 // Using direct API client for CORS-free API access
-import { medusaClient } from '../../lib/medusa-client';
+import { omnicartClient } from '../../lib/omnicart-client';
 import { OMNICART_PUBLISHABLE_KEY, OMNICART_SALES_CHANNEL_ID } from '@/lib/omnicart-config';
 
-export interface MedusaCollection {
+export interface OmnicartCollection {
   id: string
   title: string
   handle: string
@@ -18,7 +18,7 @@ export interface MedusaCollection {
 }
 
 export interface CollectionsResponse {
-  collections: MedusaCollection[]
+  collections: OmnicartCollection[]
   count: number
   offset: number
   limit: number
@@ -31,9 +31,9 @@ export const listCollections = async (params?: {
   limit?: number
   offset?: number
   fields?: string
-}): Promise<{ collections: MedusaCollection[]; count: number }> => {
+}): Promise<{ collections: OmnicartCollection[]; count: number }> => {
   try {
-    const response = await medusaClient.get<{ collections: MedusaCollection[]; count: number }>(
+    const response = await omnicartClient.get<{ collections: OmnicartCollection[]; count: number }>(
       `/store/collections`,
       {
         query: {
@@ -61,9 +61,9 @@ export const listCollections = async (params?: {
 /**
  * Get collection by ID
  */
-export const getCollection = async (collectionId: string): Promise<MedusaCollection | null> => {
+export const getCollection = async (collectionId: string): Promise<OmnicartCollection | null> => {
   try {
-    const response = await medusaClient.get<{ collection: MedusaCollection }>(
+    const response = await omnicartClient.get<{ collection: OmnicartCollection }>(
       `/store/collections/${collectionId}`,
       {
         query: {
@@ -86,7 +86,7 @@ export const getCollection = async (collectionId: string): Promise<MedusaCollect
 /**
  * Get collection by handle with products filtered by sales channel
  */
-export const getCollectionByHandle = async (handle: string): Promise<MedusaCollection | null> => {
+export const getCollectionByHandle = async (handle: string): Promise<OmnicartCollection | null> => {
   try {
     // First get the collection (include metadata for hero/copy)
     const { collections } = await listCollections({ fields: "id,title,handle,metadata,*products" })
@@ -97,7 +97,7 @@ export const getCollectionByHandle = async (handle: string): Promise<MedusaColle
     }
 
     // Then get products for this collection filtered by sales channel
-    const response = await medusaClient.get<{ products: any[] }>(
+    const response = await omnicartClient.get<{ products: any[] }>(
       `/store/products`,
       {
         query: {
@@ -125,7 +125,7 @@ export const getCollectionByHandle = async (handle: string): Promise<MedusaColle
 /**
  * Get featured collections (first 6 collections)
  */
-export const getFeaturedCollections = async (): Promise<MedusaCollection[]> => {
+export const getFeaturedCollections = async (): Promise<OmnicartCollection[]> => {
   try {
     const { collections } = await listCollections({ limit: 6 })
     return collections

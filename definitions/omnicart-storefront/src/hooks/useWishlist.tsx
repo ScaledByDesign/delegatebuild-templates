@@ -13,7 +13,7 @@ import {
   type Wishlist,
   type WishlistItem,
   type AddToWishlistRequest
-} from '@/services/medusa/wishlist';
+} from '@/services/omnicart/wishlist';
 
 interface WishlistContextType {
   wishlist: Wishlist | null;

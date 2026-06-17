@@ -13,7 +13,7 @@ import {
   formatGiftCardValue,
   isValidGiftCardCode,
   type GiftCard
-} from '@/services/medusa/giftCards';
+} from '@/services/omnicart/giftCards';
 
 interface GiftCardInputProps {
   cartId: string;

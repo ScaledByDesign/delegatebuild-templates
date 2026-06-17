@@ -1,6 +1,6 @@
-import { medusaClient } from "@/lib/medusa-client"
+import { omnicartClient } from "@/lib/omnicart-client"
 import { getAuthHeaders } from '@/lib/util/cookies';
-import medusaError from '@/lib/util/medusa-error';
+import omnicartError from '@/lib/util/omnicart-error';
 
 export interface ReturnItem {
   item_id: string;
@@ -76,7 +76,7 @@ export const getReturnReasons = async (): Promise<ReturnReason[]> => {
       { id: 'other', label: 'Other', description: 'Other reason (please specify)' }
     ];
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -100,7 +100,7 @@ export const checkReturnEligibility = async (orderId: string): Promise<{
     
     // In a real implementation, this would check with Medusa API
     // For now, we'll simulate the response
-    const response = await medusaClient.fetch(`/store/orders/${orderId}`, {
+    const response = await omnicartClient.fetch(`/store/orders/${orderId}`, {
       headers
     });
 
@@ -147,7 +147,7 @@ export const checkReturnEligibility = async (orderId: string): Promise<{
       eligible_items
     };
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -161,7 +161,7 @@ export const createReturn = async (returnRequest: ReturnRequest): Promise<Return
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch('/store/returns', {
+    const response = await omnicartClient.fetch('/store/returns', {
       method: 'POST',
       headers,
       body: JSON.stringify(returnRequest)
@@ -169,7 +169,7 @@ export const createReturn = async (returnRequest: ReturnRequest): Promise<Return
 
     return (response as any)?.return;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -180,13 +180,13 @@ export const getReturn = async (returnId: string): Promise<Return> => {
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch(`/store/returns/${returnId}`, {
+    const response = await omnicartClient.fetch(`/store/returns/${returnId}`, {
       headers
     });
 
     return (response as any)?.return;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -197,13 +197,13 @@ export const getCustomerReturns = async (): Promise<Return[]> => {
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch('/store/customers/me/returns', {
+    const response = await omnicartClient.fetch('/store/customers/me/returns', {
       headers
     });
 
     return (response as any)?.returns || [];
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -217,14 +217,14 @@ export const cancelReturn = async (returnId: string): Promise<Return> => {
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch(`/store/returns/${returnId}/cancel`, {
+    const response = await omnicartClient.fetch(`/store/returns/${returnId}/cancel`, {
       method: 'POST',
       headers
     });
 
     return (response as any)?.return;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -245,7 +245,7 @@ export const createExchange = async (exchangeData: {
       'Content-Type': 'application/json'
     };
 
-    const response = await medusaClient.fetch('/store/swaps', {
+    const response = await omnicartClient.fetch('/store/swaps', {
       method: 'POST',
       headers,
       body: JSON.stringify(exchangeData)
@@ -253,7 +253,7 @@ export const createExchange = async (exchangeData: {
 
     return (response as any)?.swap;
   } catch (error) {
-    throw medusaError(error);
+    throw omnicartError(error);
   }
 };
 
@@ -269,7 +269,7 @@ export const getReturnShippingOptions = async (returnId: string): Promise<Array<
   try {
     const headers = getAuthHeaders();
 
-    const response = await medusaClient.fetch(`/store/returns/${returnId}/shipping-methods`, {
+    const response = await omnicartClient.fetch(`/store/returns/${returnId}/shipping-methods`, {
       headers
     });
 

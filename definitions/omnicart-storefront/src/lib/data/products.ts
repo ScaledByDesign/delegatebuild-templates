@@ -1,4 +1,4 @@
-import { medusaClient } from "../medusa-client"
+import { omnicartClient } from "../omnicart-client"
 import { getAuthHeaders } from "../util/cookies"
 import { OMNICART_PUBLISHABLE_KEY } from "@/lib/omnicart-config"
 
@@ -32,7 +32,7 @@ export const trackProductViewServerSide = async (
   if (!productId) return
 
   try {
-    await medusaClient.fetch(`/store/products/${productId}/track-view`, {
+    await omnicartClient.fetch(`/store/products/${productId}/track-view`, {
       method: "POST",
       body: JSON.stringify({
         ...(customerId ? { customer_id: customerId } : {}),

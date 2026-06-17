@@ -1,7 +1,7 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { listCollections, MedusaCollection } from '../services/medusa/collections';
+import { listCollections, OmnicartCollection } from '../services/omnicart/collections';
 import { Card, CardContent } from './ui/card';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
@@ -68,7 +68,7 @@ const FeaturedCollections: React.FC = () => {
 };
 
 interface CollectionCardProps {
-  collection: MedusaCollection;
+  collection: OmnicartCollection;
 }
 
 const CollectionCard: React.FC<CollectionCardProps> = ({ collection }) => {

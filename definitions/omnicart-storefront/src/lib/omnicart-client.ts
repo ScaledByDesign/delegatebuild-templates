@@ -1,13 +1,13 @@
-// Direct API client for Medusa - replacing the SDK
-import medusaError from './util/medusa-error'
+// Direct API client for OmniCart - replacing the SDK
+import omnicartError from './util/omnicart-error'
 import { OMNICART_BACKEND_URL, OMNICART_PUBLISHABLE_KEY } from './omnicart-config'
 
-export interface MedusaClientOptions {
+export interface OmnicartClientOptions {
   headers?: Record<string, string>
   cache?: RequestCache
 }
 
-export class MedusaClient {
+export class OmnicartClient {
   private baseUrl: string
   private publishableKey?: string
 
@@ -93,7 +93,7 @@ export class MedusaClient {
       if (!response.ok) {
         const errorText = await response.text()
         console.error(`API Error ${response.status}:`, errorText)
-        // Try to extract the human-readable message from Medusa JSON errors
+        // Try to extract the human-readable message from API JSON errors
         let errorMessage = `HTTP ${response.status}: ${errorText}`
         try {
           const parsed = JSON.parse(errorText)
@@ -109,33 +109,33 @@ export class MedusaClient {
       const data = await response.json()
       return data as T
     } catch (error) {
-      console.error('Medusa API Error:', error)
-      throw medusaError(error)
+      console.error('OmniCart API Error:', error)
+      throw omnicartError(error)
     }
   }
 
   // Convenience methods for common HTTP verbs
-  async get<T = any>(path: string, options: Omit<MedusaClientOptions, 'method'> & { query?: Record<string, any> } = {}): Promise<T> {
+  async get<T = any>(path: string, options: Omit<OmnicartClientOptions, 'method'> & { query?: Record<string, any> } = {}): Promise<T> {
     return this.fetch<T>(path, { ...options, method: 'GET' })
   }
 
-  async post<T = any>(path: string, body?: any, options: Omit<MedusaClientOptions, 'method' | 'body'> = {}): Promise<T> {
+  async post<T = any>(path: string, body?: any, options: Omit<OmnicartClientOptions, 'method' | 'body'> = {}): Promise<T> {
     return this.fetch<T>(path, { ...options, method: 'POST', body })
   }
 
-  async put<T = any>(path: string, body?: any, options: Omit<MedusaClientOptions, 'method' | 'body'> = {}): Promise<T> {
+  async put<T = any>(path: string, body?: any, options: Omit<OmnicartClientOptions, 'method' | 'body'> = {}): Promise<T> {
     return this.fetch<T>(path, { ...options, method: 'PUT', body })
   }
 
-  async patch<T = any>(path: string, body?: any, options: Omit<MedusaClientOptions, 'method' | 'body'> = {}): Promise<T> {
+  async patch<T = any>(path: string, body?: any, options: Omit<OmnicartClientOptions, 'method' | 'body'> = {}): Promise<T> {
     return this.fetch<T>(path, { ...options, method: 'PATCH', body })
   }
 
-  async delete<T = any>(path: string, options: Omit<MedusaClientOptions, 'method'> = {}): Promise<T> {
+  async delete<T = any>(path: string, options: Omit<OmnicartClientOptions, 'method'> = {}): Promise<T> {
     return this.fetch<T>(path, { ...options, method: 'DELETE' })
   }
 }
 
 // Export a singleton instance
-export const medusaClient = new MedusaClient()
-export default medusaClient
+export const omnicartClient = new OmnicartClient()
+export default omnicartClient

@@ -1,7 +1,7 @@
 import React, { useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Link } from "react-router-dom"
-import { listCollections } from "@/services/medusa/collections"
+import { listCollections } from "@/services/omnicart/collections"
 import { Loader2, Package } from "lucide-react"
 import Navbar from "@/components/Navbar"
 import Footer from "@/components/Footer"

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { useLoyaltyManagement } from '@/hooks/useLoyalty';
-import { formatPoints } from '@/services/medusa/loyalty';
+import { formatPoints } from '@/services/omnicart/loyalty';
 import { Award, Crown, Medal, Gem, TrendingUp, Gift } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
