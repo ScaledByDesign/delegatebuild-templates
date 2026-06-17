@@ -142,7 +142,10 @@ export default ({ mode }: { mode: string }) => {
       // is executed to when the server is actually ready.
       include: ["react", "react-dom", "react-router-dom"],
       exclude: ["agents"], // Exclude agents package from pre-bundling due to Node.js dependencies
-      force: true,
+      // Use Vite's cached optimized deps. Forcing a re-bundle on every dev
+      // start made the sandbox re-optimize under slow disk IO, which 504'd
+      // requests for .vite/deps/*.js (react, react-router-dom, etc.).
+      force: false,
     },
     define: {
       // Define Node.js globals for the agents package

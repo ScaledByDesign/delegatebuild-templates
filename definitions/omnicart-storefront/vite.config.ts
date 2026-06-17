@@ -180,7 +180,10 @@ export default ({ mode }: { mode: string }) => {
     optimizeDeps: {
       include: ["react", "react-dom", "react-router-dom"],
       exclude: ["agents"],
-      force: true,
+      // Use Vite's cached optimized deps. Forcing a re-bundle on every dev
+      // start made the sandbox re-optimize under slow disk IO, which 504'd
+      // requests for .vite/deps/*.js (react, react-router-dom, etc.).
+      force: false,
     },
     define: {
       global: "globalThis",
