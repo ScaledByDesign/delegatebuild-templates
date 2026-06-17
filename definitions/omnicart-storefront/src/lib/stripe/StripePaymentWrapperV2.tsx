@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
+import { resolveStripePublishableKey } from './stripe-key';
 
 interface StripePaymentWrapperV2Props {
   children: React.ReactNode;
@@ -34,15 +35,7 @@ export const StripePaymentWrapperV2: React.FC<StripePaymentWrapperV2Props> = ({
   children,
   clientSecret,
 }) => {
-  const stripePromise = useMemo(
-    () => loadStripe(
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLIC_KEY) ||
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY) ||
-      (process.env.STRIPE_PUBLISHABLE_KEY) ||
-      ''
-    ),
-    []
-  );
+  const stripePromise = useMemo(() => loadStripe(resolveStripePublishableKey()), []);
 
   // If we have a clientSecret, use it to initialize Elements with the PaymentIntent
   // Otherwise, use deferred mode until payment session is created

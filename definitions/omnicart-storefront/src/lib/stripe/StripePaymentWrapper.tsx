@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Elements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
+import { resolveStripePublishableKey } from './stripe-key';
 
 interface StripePaymentWrapperProps {
   clientSecret: string | null;
@@ -11,15 +12,7 @@ export const StripePaymentWrapper: React.FC<StripePaymentWrapperProps> = ({
   clientSecret,
   children,
 }) => {
-  const stripePromise = useMemo(
-    () => loadStripe(
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLIC_KEY) ||
-      (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY) ||
-      (process.env.STRIPE_PUBLISHABLE_KEY) ||
-      ''
-    ),
-    []
-  );
+  const stripePromise = useMemo(() => loadStripe(resolveStripePublishableKey()), []);
 
   if (!clientSecret) {
     return <>{children}</>;
