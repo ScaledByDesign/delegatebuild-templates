@@ -2,7 +2,7 @@
 
 This template provides a production-ready **Universal Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout: **`/c/:code`** (the public checkout one-pager - cart review -> shipping -> payment on-page sections), **`/upsell/:sessionId`** (a **Flow Builder driven post-purchase upsell**, one one-click offer per route, with upsell/downsell branching), and **`/success`** (the itemized receipt). `/` redirects into `/c/:code` - there is no separate homepage/storefront landing. Unlike a single-gateway checkout, it is **processor-agnostic**: the initial charge runs through a pluggable `CheckoutProcessorAdapter` contract, with four real adapters shipped out of the box (Stripe, OmniCart, Konnektive, Sticky.io). The builder can target any of them - or switch between them at runtime - without changing the checkout UI.
 
-> Internal note (developers only): OmniCart is the whitelabel commerce brand. It is powered under the hood by the **Medusa** commerce framework via the `@medusajs/medusa-js` SDK. All user-facing copy, components, and routes use **OmniCart** naming - "Medusa" is only an internal framework reference and must never surface in generated UI.
+> Internal note (developers only): OmniCart is the whitelabel commerce brand. It is powered under the hood by **Medusa v2** via the official `@medusajs/js-sdk` storefront SDK. All user-facing copy, components, and routes use **OmniCart** naming - "Medusa" is only an internal framework reference and must never surface in generated UI.
 
 ## Processor adapters
 

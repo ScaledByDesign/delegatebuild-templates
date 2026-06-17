@@ -2,9 +2,10 @@
  * OmniCart Upsell Flow client.
  *
  * Drives the post-purchase upsell sequence using the OmniCart **Flow Builder**
- * button contract. All calls go through the app's own Worker proxy at
- * `/api/upsell/*` (see worker/userRoutes.ts), which forwards to the configured
- * OmniCart Flow Builder runtime and keeps the publishable key server-side.
+ * button contract. All calls go through the app's OWN same-origin Worker proxy
+ * at `/api/upsell/*` (see worker/userRoutes.ts), which forwards to the configured
+ * OmniCart Flow Builder runtime and keeps the service token server-side — the
+ * token never ships to the browser.
  *
  * Runtime contract (mirrors the Delegate backend):
  *   POST /api/upsell/session            → initialize a session for an order,
@@ -13,9 +14,12 @@
  *                                        → charge (on accept) + walk the graph,
  *                                          returns the next node or terminal
  *
- * When no backend is configured, the client transparently falls back to an
- * in-browser walk of DEMO_FLOW_NODES so the generated checkout renders a full
- * multi-upsell journey out of the box.
+ * DEGRADABLE BY DESIGN: the upsell is post-purchase, so it must never block the
+ * (already completed) checkout. When the platform/CORE runtime is unreachable or
+ * unconfigured, the client transparently falls back to a LOCAL walk of the
+ * merchant's baked `FLOW_SNAPSHOT` — or the built-in `DEMO_FLOW_NODES` when no
+ * snapshot was injected — so the generated checkout always renders a full
+ * multi-upsell journey, even during a CORE outage.
  */
 import {
   DEMO_FLOW_ENTRY_BUTTON_ID,
@@ -48,48 +52,82 @@ export interface StartFlowResult {
   session: FlowSession;
   /** First offer node to render, or null if the flow has no offers. */
   entry_node: FlowNode | null;
-  /** True when this session is running against the in-browser demo flow. */
+  /** True when this session is running against a LOCAL flow (snapshot/demo). */
   demo: boolean;
 }
 
-/** True if the OmniCart backend reports a wired upsell flow runtime. */
-function backendConfigured(): boolean {
-  return Boolean(import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_URL);
+/**
+ * A self-contained upsell flow used as the OFFLINE FALLBACK when the live CORE
+ * runtime is unreachable. The shape matches what the local walker needs: an
+ * entry node id plus the full node table to walk.
+ */
+export interface FlowSnapshot {
+  flow_id: string;
+  entry_button_id: string;
+  nodes: Record<string, FlowNode>;
 }
 
-// ─── Demo (no-backend) in-browser flow walker ────────────────────────────────
+/**
+ * BUILD-TIME INJECTABLE: the merchant's published upsell flow, pulled down from
+ * CORE at generation time and baked in here as an OFFLINE FALLBACK. At runtime
+ * the LIVE CORE flow (via `/api/upsell/*`) is preferred; if CORE is unreachable
+ * the client falls back to THIS snapshot so the post-purchase upsell still runs
+ * the merchant's REAL offers rather than the generic demo. Leave `null` to fall
+ * back to the built-in `DEMO_FLOW_NODES`.
+ */
+export const FLOW_SNAPSHOT: FlowSnapshot | null = null;
+
+/** The built-in demo flow, expressed as a snapshot. */
+const DEMO_FLOW: FlowSnapshot = {
+  flow_id: DEMO_FLOW_ID,
+  entry_button_id: DEMO_FLOW_ENTRY_BUTTON_ID,
+  nodes: DEMO_FLOW_NODES,
+};
+
+/** Resolve the local fallback flow: the baked snapshot, else the demo flow. */
+function resolveLocalFlow(): FlowSnapshot {
+  return FLOW_SNAPSHOT ?? DEMO_FLOW;
+}
+
+// ─── Local (no-backend) in-browser flow walker ───────────────────────────────
 // Mirrors the server runtime's accept/decline + graph-walk + journey logic so
-// the generated page behaves identically before a backend is wired.
+// the generated page behaves identically when CORE is unreachable. Operates over
+// `activeNodes`, set to the resolved local flow's node table when a local
+// session starts. Local session ids are prefixed `demo_` so `stepUpsellFlow`
+// routes them through this walker.
 
-let demoSession: FlowSession | null = null;
+let localSession: FlowSession | null = null;
+let activeNodes: Record<string, FlowNode> = DEMO_FLOW_NODES;
 
-function demoNode(id: string | null): FlowNode | null {
-  return id ? DEMO_FLOW_NODES[id] ?? null : null;
+function localNode(id: string | null): FlowNode | null {
+  return id ? activeNodes[id] ?? null : null;
 }
 
-function demoStart(input: StartFlowInput): StartFlowResult {
-  demoSession = {
+function localStart(input: StartFlowInput): StartFlowResult {
+  const flow = resolveLocalFlow();
+  activeNodes = flow.nodes;
+  localSession = {
     id: `demo_${Math.random().toString(36).slice(2, 10)}`,
-    flow_id: DEMO_FLOW_ID,
+    flow_id: flow.flow_id,
     status: "active",
-    current_button_id: DEMO_FLOW_ENTRY_BUTTON_ID,
+    current_button_id: flow.entry_button_id,
     journey: [],
     total_revenue: input.originalOrderTotal,
     upsell_total: 0,
     currency_code: input.currencyCode || "usd",
     version: 1,
   };
-  return { session: { ...demoSession }, entry_node: demoNode(demoSession.current_button_id), demo: true };
+  return { session: { ...localSession }, entry_node: localNode(localSession.current_button_id), demo: true };
 }
 
-function demoStep(
+function localStep(
   action: "accept" | "decline",
   nodeId: string,
   variantId: string | null,
 ): FlowStepResult {
-  if (!demoSession) throw new Error("Demo session not started");
-  const node = demoNode(nodeId);
-  if (!node) throw new Error(`Demo node not found: ${nodeId}`);
+  if (!localSession) throw new Error("Local upsell session not started");
+  const node = localNode(nodeId);
+  if (!node) throw new Error(`Local upsell node not found: ${nodeId}`);
 
   // Resolve the charge amount (multi-accept variant overrides node price).
   let revenue = 0;
@@ -120,19 +158,19 @@ function demoStep(
       ? node.success_next_button_id ?? null
       : node.decline_next_button_id ?? null;
 
-  demoSession = {
-    ...demoSession,
+  localSession = {
+    ...localSession,
     current_button_id: nextId,
-    journey: [...demoSession.journey, step],
-    total_revenue: demoSession.total_revenue + revenue,
-    upsell_total: demoSession.upsell_total + revenue,
+    journey: [...localSession.journey, step],
+    total_revenue: localSession.total_revenue + revenue,
+    upsell_total: localSession.upsell_total + revenue,
     status: nextId ? "active" : "completed",
-    version: demoSession.version + 1,
+    version: localSession.version + 1,
   };
 
-  const nextNode = demoNode(nextId);
+  const nextNode = localNode(nextId);
   return {
-    session: { ...demoSession },
+    session: { ...localSession },
     next_node: nextNode,
     is_terminal: !nextId,
     charge:
@@ -140,7 +178,7 @@ function demoStep(
         ? {
             transaction_id: `demo_txn_${Math.random().toString(36).slice(2, 10)}`,
             amount_charged: revenue,
-            currency: demoSession.currency_code,
+            currency: localSession.currency_code,
           }
         : null,
   };
@@ -148,110 +186,41 @@ function demoStep(
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
+interface UpsellSessionResponse {
+  success?: boolean;
+  data?: { session: FlowSession | null; entry_node: FlowNode | null };
+}
+
 /**
  * Initialize a post-purchase upsell session for a paid order and resolve the
- * first offer node. Falls back to the in-browser demo flow when no backend is
- * configured.
+ * first offer node. Prefers the live CORE runtime via the same-origin Worker
+ * proxy; falls back to the local snapshot/demo flow when CORE is unreachable or
+ * unconfigured.
  */
 export async function startUpsellFlow(input: StartFlowInput): Promise<StartFlowResult> {
-  const runtimeUrl = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_URL;
-  if (!runtimeUrl) {
-    return demoStart(input);
-  }
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  const token = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_TOKEN;
-  if (token) {
-    headers["authorization"] = `Bearer ${token}`;
-  }
-  
-  // Direct call to platform/runtime's init endpoint
-  const target = `${runtimeUrl.replace(/\/$/, "")}/api/flow-builder/init`;
-  const platformBody = {
-    order_id: input.orderId,
-    original_order_total: input.originalOrderTotal,
-    flow_id: input.flowId,
-    currency_code: input.currencyCode,
-  };
-
   try {
-    const res = await fetch(target, {
+    const res = await fetch("/api/upsell/session", {
       method: "POST",
-      headers,
-      body: JSON.stringify(platformBody),
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({
+        orderId: input.orderId,
+        originalOrderTotal: input.originalOrderTotal,
+        flowId: input.flowId,
+        currencyCode: input.currencyCode,
+      }),
     });
-    if (!res.ok) {
-      return demoStart(input);
-    }
-    const platformJson = (await res.json()) as { session: any; entry_button: any };
-    const session = platformJson.session;
-    const entry_button = platformJson.entry_button;
-
-    const readJourneySteps = (journey: any): any[] => {
-      if (!journey || typeof journey !== "object" || Array.isArray(journey)) {
-        return [];
+    if (res.ok) {
+      const json = (await res.json()) as UpsellSessionResponse;
+      if (json.success && json.data?.session) {
+        return { session: json.data.session, entry_node: json.data.entry_node, demo: false };
       }
-      const steps = journey.steps;
-      if (!Array.isArray(steps)) return [];
-      return steps;
-    };
-
-    const flowSession = session ? {
-      id: session.id,
-      flow_id: session.flowId,
-      status: session.status,
-      current_button_id: session.currentButtonId,
-      journey: readJourneySteps(session.journey).map((s: any) => ({
-        button_id: s.buttonId,
-        button_text: s.buttonText,
-        action: s.action,
-        revenue: s.revenue,
-        timestamp: s.timestamp,
-      })),
-      total_revenue: session.totalRevenueCents ?? 0,
-      upsell_total: session.upsellTotalCents ?? 0,
-      currency_code: session.currencyCode || "USD",
-      version: session.version ?? 1,
-    } : null;
-
-    let flowNode = null;
-    if (entry_button) {
-      const meta = (entry_button.metadata ?? {}) as Record<string, unknown>;
-      const pitch = typeof meta.description === "string" ? meta.description : (typeof meta.subheadline === "string" ? meta.subheadline : null);
-      const compare_at_price = typeof meta.compareAtPrice === "number" ? meta.compareAtPrice : null;
-      const decline_text = typeof meta.declineText === "string" ? meta.declineText : null;
-      const accept_options = Array.isArray(entry_button.acceptOptions)
-        ? entry_button.acceptOptions.map((v: any) => ({
-            id: v.id,
-            label: v.label || "",
-            price: v.price,
-            compareAtPrice: v.compareAtPrice ?? null,
-            ctaText: v.ctaText ?? null,
-          }))
-        : null;
-
-      flowNode = {
-        id: entry_button.id,
-        label: typeof meta.headline === "string" && meta.headline ? meta.headline : entry_button.label,
-        button_text: entry_button.buttonText,
-        pitch,
-        display_price: entry_button.displayPrice ?? null,
-        currency_code: entry_button.currencyCode || "USD",
-        compare_at_price,
-        accept_options,
-        decline_text,
-        success_next_button_id: entry_button.successNextButtonId ?? null,
-        decline_next_button_id: entry_button.declineNextButtonId ?? null,
-        is_terminal_success: entry_button.isTerminalSuccess ?? false,
-        is_terminal_decline: entry_button.isTerminalDecline ?? false,
-        timer: entry_button.timer ?? null,
-        external_page_url: entry_button.externalPageUrl ?? null,
-      };
     }
-
-    return { session: flowSession!, entry_node: flowNode, demo: false };
   } catch {
-    return demoStart(input);
+    // Network/CORE failure → fall through to the local fallback below.
   }
+  // CORE unreachable or not configured → run the merchant's baked snapshot
+  // (or the built-in demo flow when no snapshot was injected).
+  return localStart(input);
 }
 
 /**
@@ -261,7 +230,8 @@ export async function startUpsellFlow(input: StartFlowInput): Promise<StartFlowR
  * terminal result that advances the storefront to confirmation).
  *
  * The `version` from the session is round-tripped via the runtime's optimistic
- * lock so rapid double-clicks can't double-charge.
+ * lock so rapid double-clicks can't double-charge. A local (`demo_`) session is
+ * walked in-browser instead.
  */
 export async function stepUpsellFlow(args: {
   session: FlowSession;
@@ -277,12 +247,7 @@ export async function stepUpsellFlow(args: {
   }
 
   if (session.id.startsWith("demo_")) {
-    return demoStep(action, nodeId, variantId);
-  }
-
-  const runtimeUrl = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_URL;
-  if (!runtimeUrl) {
-    return { session, next_node: null, is_terminal: true };
+    return localStep(action, nodeId, variantId);
   }
 
   const qs = new URLSearchParams({
@@ -293,17 +258,16 @@ export async function stepUpsellFlow(args: {
   });
   if (variantId) qs.set("variantId", variantId);
 
-  const headers: Record<string, string> = { accept: "application/json" };
-  const token = import.meta.env.VITE_OMNICART_UPSELL_RUNTIME_TOKEN;
-  if (token) {
-    headers["authorization"] = `Bearer ${token}`;
+  try {
+    const res = await fetch(`/api/upsell/click?${qs.toString()}`, {
+      method: "GET",
+      headers: { accept: "application/json" },
+    });
+    const json = (await res.json()) as { data?: FlowStepResult } | FlowStepResult;
+    // Tolerate both `{ data: ... }` and bare result envelopes from the proxy.
+    return "data" in json && json.data ? json.data : (json as FlowStepResult);
+  } catch {
+    // CORE went away mid-flow: end the (post-purchase) upsell gracefully.
+    return { session, next_node: null, is_terminal: true };
   }
-
-  const res = await fetch(`${runtimeUrl.replace(/\/$/, "")}/api/flow-builder/click?${qs.toString()}`, {
-    method: "GET",
-    headers,
-  });
-  const json = (await res.json()) as { data: FlowStepResult } | FlowStepResult;
-  // Tolerate both `{ data: ... }` and bare result envelopes from the proxy.
-  return "data" in (json as { data?: unknown }) ? (json as { data: FlowStepResult }).data : (json as FlowStepResult);
 }

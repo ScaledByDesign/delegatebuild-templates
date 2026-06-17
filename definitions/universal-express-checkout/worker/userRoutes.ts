@@ -5,17 +5,21 @@ import { Env } from './core-utils';
  * Universal Express Checkout - Worker API routes.
  *
  * One storefront, any payment processor. These routes:
- *   1. Proxy the UNIVERSAL checkout API (`/api/checkout/:kind/*`) to whichever
- *      processor backend is configured (Stripe, OmniCart, Konnektive, Sticky.io),
- *      keying each backend on the processor kind and keeping every credential
- *      server-side. When a processor has no backend configured, the route
- *      short-circuits with `503 { demo: true }` so that processor's adapter
- *      falls back to demo mode.
+ *   1. Proxy the UNIVERSAL checkout API (`/api/checkout/:kind/*`) DIRECTLY to
+ *      whichever processor backend is configured (Stripe, OmniCart, Konnektive,
+ *      Sticky.io), keying each backend on the processor kind and keeping every
+ *      credential server-side. Payments NEVER route through the Delegate platform
+ *      (CORE): each app talks straight to its processor backend, so a CORE outage
+ *      can never take a merchant's checkout down (blast-radius isolation). When a
+ *      processor has no backend configured, the route short-circuits with
+ *      `503 { demo: true }` so that processor's adapter falls back to demo mode.
  *   2. Proxy the OmniCart storefront API (`/api/omnicart/*`) - the retained
  *      Medusa v2 cart lifecycle the OmniCart adapter composes - injecting the
  *      publishable key server-side.
  *   3. Proxy the Flow Builder upsell runtime (`/api/upsell/*`), keeping the
- *      service token server-side. The upsell runs uniformly for every processor.
+ *      service token server-side. The upsell is post-purchase and DEGRADABLE: if
+ *      CORE is unreachable the storefront falls back to its baked flow snapshot,
+ *      so the upsell never blocks the (already completed) checkout.
  *   4. Expose a thin Stripe helper used by the payment step.
  *
  * DO NOT MODIFY CORS OR OVERRIDE ERROR HANDLERS.
@@ -71,20 +75,70 @@ const KNOWN_PROCESSOR_KINDS = new Set([
   "stickyio",
 ]);
 
+// --- Flow Builder upstream shapes (CORE camelCase) --------------------------
+// The platform returns camelCase session/button payloads; we map them to the
+// storefront's snake_case FlowSession/FlowNode contract before responding.
+interface PlatformAcceptOption {
+  id: string;
+  label?: string;
+  price: number;
+  compareAtPrice?: number | null;
+  ctaText?: string | null;
+}
+interface PlatformButton {
+  id: string;
+  label?: string;
+  buttonText?: string;
+  displayPrice?: number | null;
+  currencyCode?: string;
+  metadata?: Record<string, unknown>;
+  acceptOptions?: PlatformAcceptOption[];
+  successNextButtonId?: string | null;
+  declineNextButtonId?: string | null;
+  isTerminalSuccess?: boolean;
+  isTerminalDecline?: boolean;
+  timer?: number | null;
+  externalPageUrl?: string | null;
+}
+interface PlatformJourneyStep {
+  buttonId: string;
+  buttonText: string;
+  action: string;
+  revenue: number;
+  timestamp: string;
+}
+interface PlatformSession {
+  id: string;
+  flowId?: string;
+  status?: string;
+  currentButtonId?: string | null;
+  journey?: unknown;
+  totalRevenueCents?: number;
+  upsellTotalCents?: number;
+  currencyCode?: string;
+  version?: number;
+}
+interface PlatformInitResponse {
+  session?: PlatformSession | null;
+  entry_button?: PlatformButton | null;
+}
+
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // Health/demo route kept from the reference template.
   app.get('/api/test', (c) => c.json({ success: true, data: { name: 'this works' } }));
 
   // --- Universal checkout proxy (/api/checkout/:kind/*) ----------------------
   // The single entry point every adapter uses. The path's first segment is the
-  // processor kind; the rest is forwarded to that processor's backend:
+  // processor kind; the rest is forwarded DIRECTLY to that processor's backend:
   //   POST /api/checkout/stripe/init-payment        (payment-class, FIRST call)
   //   POST /api/checkout/stripe/charge-initial      (payment-class, SECOND call)
   //   POST /api/checkout/konnektive/charge-initial  (CRM-class, single call)
   //   POST /api/checkout/stickyio/charge-initial    (CRM-class, single call)
   // (OmniCart's adapter composes the existing /api/omnicart/* Medusa lifecycle
   // instead of this path, so it rarely hits here - but it resolves correctly if
-  // it does.) When the processor has no backend configured, return the
+  // it does.) Payments are forwarded straight to the processor's own backend and
+  // NEVER through the Delegate platform, so a platform outage cannot break a
+  // merchant's checkout. When the processor has no backend configured, return the
   // `503 { demo: true }` signal so the adapter falls back to demo mode. The
   // backend owns ALL processor credentials; none ship to the browser.
   app.all('/api/checkout/:kind/*', async (c) => {
@@ -95,127 +149,6 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ success: false, error: `Unknown processor: ${kind}` }, 404);
     }
 
-    // Check if the platform's Flow Builder upsell runtime is set (indicating the platform is our backend)
-    const { base: runtimeUrl, token: runtimeToken } = upsellRuntime(c);
-    const upstreamPath = c.req.path.replace(
-      new RegExp(`^/api/checkout/${kind}`),
-      '',
-    );
-
-    if (runtimeUrl) {
-      let clientBody: any = {};
-      if (c.req.method === 'POST') {
-        try {
-          clientBody = await c.req.json();
-        } catch {
-          // Empty body
-        }
-      }
-
-      const checkoutCode = clientBody.metadata?.checkoutCode || "demo";
-      const headers = new Headers();
-      headers.set('content-type', 'application/json');
-      headers.set('accept', 'application/json');
-      if (runtimeToken) {
-        headers.set('authorization', `Bearer ${runtimeToken}`);
-      }
-
-      if (upstreamPath === '/init-payment') {
-        const initBody = {
-          token: checkoutCode,
-          provider: kind,
-          customer: {
-            email: clientBody.email || "",
-          },
-          currency: clientBody.currency,
-          totalOverride: clientBody.totalCents,
-          lineItems: clientBody.lineItems,
-          metadata: clientBody.metadata,
-        };
-
-        const target = `${runtimeUrl}/api/checkout/initialize`;
-        try {
-          const upstream = await fetch(target, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(initBody),
-          });
-
-          if (!upstream.ok) {
-            const errText = await upstream.text();
-            return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
-          }
-
-          const resJson = await upstream.json() as any;
-          return c.json(resJson);
-        } catch (err) {
-          return c.json(
-            { success: false, error: `Platform checkout initialization unreachable: ${err instanceof Error ? err.message : 'unknown'}` },
-            502,
-          );
-        }
-      } else if (upstreamPath === '/charge-initial') {
-        const completeBody = {
-          token: checkoutCode,
-          orderId: clientBody.idempotencyKey,
-          transactionId: clientBody.metadata?.paymentIntentId || clientBody.metadata?.paymentMethodId || clientBody.idempotencyKey,
-          provider: kind,
-          providerOrderId: clientBody.metadata?.paymentIntentId,
-          customerEmail: clientBody.customer?.email,
-          customerName: `${clientBody.customer?.first_name || ""} ${clientBody.customer?.last_name || ""}`.trim(),
-          amount: clientBody.totalCents,
-          currency: clientBody.currency,
-          lineItems: clientBody.lineItems,
-          metadata: clientBody.metadata,
-          customer: {
-            firstName: clientBody.customer?.first_name,
-            lastName: clientBody.customer?.last_name,
-            phone: clientBody.customer?.phone,
-          },
-        };
-
-        const target = `${runtimeUrl}/api/checkout/complete`;
-        try {
-          const upstream = await fetch(target, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(completeBody),
-          });
-
-          if (!upstream.ok) {
-            const errText = await upstream.text();
-            return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
-          }
-
-          const resJson = await upstream.json() as any;
-
-          if (resJson.status === "requires_action") {
-            return c.json({
-              status: "requires_action",
-              clientSecret: resJson.clientSecret,
-              returnUrl: resJson.returnUrl,
-            });
-          }
-
-          if (resJson.status === "succeeded") {
-            return c.json({
-              status: "succeeded",
-              processorOrderId: resJson.processorOrderId,
-              order: resJson.order,
-            });
-          }
-
-          return c.json(resJson);
-        } catch (err) {
-          return c.json(
-            { success: false, error: `Platform checkout complete unreachable: ${err instanceof Error ? err.message : 'unknown'}` },
-            502,
-          );
-        }
-      }
-    }
-
-    // Fallback: proxy to independent processor backend (original behavior)
     const backend = processorBackend(env, kind);
     if (!backend) {
       // No backend wired for this processor -> demo mode.
@@ -225,6 +158,10 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       );
     }
 
+    const upstreamPath = c.req.path.replace(
+      new RegExp(`^/api/checkout/${kind}`),
+      '',
+    );
     const url = new URL(c.req.url);
     const target = `${backend.replace(/\/$/, '')}/checkout${upstreamPath}${url.search}`;
 
@@ -389,16 +326,21 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   };
 
   app.post('/api/upsell/session', async (c) => {
-    const env = c.env as OmniCartEnv;
     const { base, token } = upsellRuntime(c);
     if (!base) {
       return c.json({ success: false, error: 'Upsell runtime not configured' }, 503);
     }
 
     // Parse incoming camelCase body
-    let clientBody: any = {};
+    interface UpsellSessionRequest {
+      orderId?: string;
+      originalOrderTotal?: number;
+      flowId?: string;
+      currencyCode?: string;
+    }
+    let clientBody: UpsellSessionRequest = {};
     try {
-      clientBody = await c.req.json();
+      clientBody = (await c.req.json()) as UpsellSessionRequest;
     } catch {
       // Empty body
     }
@@ -430,18 +372,18 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
       }
 
-      const platformJson = await upstream.json() as { session: any; entry_button: any };
-      const session = platformJson.session;
-      const entry_button = platformJson.entry_button;
+      const platformJson = (await upstream.json()) as PlatformInitResponse;
+      const session = platformJson.session ?? null;
+      const entry_button = platformJson.entry_button ?? null;
 
       // Helper to read journey steps
-      const readJourneySteps = (journey: any): any[] => {
+      const readJourneySteps = (journey: unknown): PlatformJourneyStep[] => {
         if (!journey || typeof journey !== "object" || Array.isArray(journey)) {
           return [];
         }
-        const steps = journey.steps;
+        const steps = (journey as { steps?: unknown }).steps;
         if (!Array.isArray(steps)) return [];
-        return steps;
+        return steps as PlatformJourneyStep[];
       };
 
       // Map session to FlowSession
@@ -450,7 +392,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         flow_id: session.flowId,
         status: session.status,
         current_button_id: session.currentButtonId,
-        journey: readJourneySteps(session.journey).map((s: any) => ({
+        journey: readJourneySteps(session.journey).map((s) => ({
           button_id: s.buttonId,
           button_text: s.buttonText,
           action: s.action,
@@ -466,12 +408,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       // Map button to FlowNode
       let flowNode = null;
       if (entry_button) {
-        const meta = (entry_button.metadata ?? {}) as Record<string, unknown>;
+        const meta = entry_button.metadata ?? {};
         const pitch = typeof meta.description === "string" ? meta.description : (typeof meta.subheadline === "string" ? meta.subheadline : null);
         const compare_at_price = typeof meta.compareAtPrice === "number" ? meta.compareAtPrice : null;
         const decline_text = typeof meta.declineText === "string" ? meta.declineText : null;
         const accept_options = Array.isArray(entry_button.acceptOptions)
-          ? entry_button.acceptOptions.map((v: any) => ({
+          ? entry_button.acceptOptions.map((v) => ({
               id: v.id,
               label: v.label || "",
               price: v.price,
@@ -514,7 +456,9 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
   });
 
-  app.get('/api/upsell/click', (c) => forwardUpsell(c, '/api/upsell/click'));
+  // The storefront's stepUpsellFlow GETs this; we forward to the runtime's
+  // flow-builder click endpoint with the service token attached server-side.
+  app.get('/api/upsell/click', (c) => forwardUpsell(c, '/api/flow-builder/click'));
 
   // --- OmniCart config (publishable Stripe key for the browser) -------------
   // Returns only public, browser-safe config for initializing Stripe Elements.
@@ -525,7 +469,16 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const { base: runtimeUrl, token: runtimeToken } = upsellRuntime(c);
     const backendConfigured = Boolean(env.OMNICART_BACKEND_URL && env.OMNICART_UPSELL_RUNTIME_URL);
 
-    const defaultTheme = {
+    interface CheckoutTheme {
+      logoUrl: string;
+      primaryColor: string;
+      accentColor: string;
+      fontFamily: string;
+      supportEmail: string;
+      statementName: string;
+    }
+
+    const defaultTheme: CheckoutTheme = {
       logoUrl: '',
       primaryColor: '#2563eb',
       accentColor: '#16a34a',
@@ -535,7 +488,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     };
 
     let theme = defaultTheme;
-    let config: any = null;
+    let config: unknown = null;
 
     if (backendConfigured && runtimeUrl && code !== 'demo') {
       try {
@@ -550,7 +503,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
         });
 
         if (response.ok) {
-          const resBody = await response.json() as any;
+          const resBody = (await response.json()) as {
+            success?: boolean;
+            theme?: Partial<CheckoutTheme>;
+            config?: unknown;
+          };
           if (resBody.success && resBody.theme) {
             theme = {
               logoUrl: resBody.theme.logoUrl || defaultTheme.logoUrl,

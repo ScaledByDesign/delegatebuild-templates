@@ -2,7 +2,7 @@
 
 This template generates a **Universal Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout exactly — `/c/:code` (the public checkout one-pager), `/upsell/:sessionId` (one post-purchase upsell offer per route), and `/success` (the receipt). There is NO homepage / storefront / cart-summary landing: `/` redirects straight into the checkout. The checkout page lives at `src/pages/CheckoutPage.tsx`, each upsell offer at `src/pages/UpsellOfferPage.tsx`, and the receipt at `src/pages/SuccessPage.tsx`, composed of step components in `src/components/checkout/`. What makes it universal: the initial charge is driven by a **processor-agnostic adapter contract** (`src/lib/checkout/`), so the same UI can complete a purchase through Stripe, OmniCart, Konnektive, or Sticky.io. The page auto-updates as you edit.
 
-> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of the **Medusa** commerce framework (`@medusajs/medusa-js`). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
+> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of **Medusa v2** using the official storefront SDK (`@medusajs/js-sdk`). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
 
 ## Checkout adapter contract (`src/lib/checkout/`)
 
@@ -49,16 +49,24 @@ const canSubscribe = hasPublishCapability(adapter.capabilities, "subscription");
 
 ## Commerce client (`src/lib/omnicart.ts`)
 
-The `omnicart` client talks to the same-origin Worker proxy at `/api/omnicart`. **Use it** for all store operations (carts, regions, shipping options, payment sessions, promotions). The OmniCart adapter reuses these lifecycle helpers for its charge. Do not call the backend directly from the browser - always go through `omnicart` so the publishable key and backend URL stay server-side.
+`src/lib/omnicart.ts` wraps the official **Medusa v2 SDK** (`@medusajs/js-sdk`) and exposes typed lifecycle helpers (carts, shipping options, payment sessions, promotions, order completion). **Use these helpers** for all store operations; the OmniCart adapter reuses them for its charge. Each returns a `BackendResult<T>` (`{ ok, data?, demo?, error? }`).
 
 ```ts
-import { omnicart, formatAmount, type OmniCart } from "@/lib/omnicart";
+import {
+  createCart, addLineItem, updateCartContact,
+  listShippingOptions, addShippingMethod, formatAmount, type OmniCart,
+} from "@/lib/omnicart";
 
-const { cart } = await omnicart.carts.create({ region_id });
-await omnicart.carts.lineItems.create(cart.id, { variant_id, quantity: 1 });
+const created = await createCart(region_id);          // sdk.store.cart.create
+if (created.ok) await addLineItem(created.data!.id, variant_id, 1);
 ```
 
-`formatAmount(amount, currencyCode)` formats minor-unit amounts (cents) into a localized currency string.
+**Connecting to Medusa (Cloud or self-hosted) — DUAL MODE:** the SDK client is built in `omnicart.ts` and connects in one of two ways:
+
+* **Default (same-origin Worker proxy):** the SDK targets `${origin}/api/omnicart`, and the app's OWN Worker forwards to the backend in `OMNICART_BACKEND_URL` server-side (attaching the publishable key). The browser holds no backend URL/key, CORS is centralized, and an unconfigured backend yields demo mode. **Never routes through the Delegate platform (CORE).**
+* **Override (direct to a merchant's own Medusa — self-hosted or Medusa Cloud):** set `VITE_OMNICART_BACKEND_URL` to the ABSOLUTE Medusa backend URL and `VITE_OMNICART_PUBLISHABLE_KEY` to its publishable key (Medusa publishable keys are browser-safe by design). The SDK then connects straight to that backend. The Medusa backend must allow the storefront origin in its `store_cors` setting. Get the publishable key from Medusa Admin → Settings → Publishable API Keys (it is scoped to a sales channel).
+
+Either way the backend is the Medusa store itself — NOT CORE — so a platform outage can never break the cart lifecycle. `formatAmount(amount, currencyCode)` formats minor-unit amounts (cents) into a localized currency string.
 
 ### Cart lifecycle (initial checkout)
 
@@ -100,9 +108,9 @@ These proxy to the OmniCart backend's **promotions** API (`POST`/`DELETE /api/om
 
 ## Worker API (`worker/userRoutes.ts`)
 
-* `/api/checkout/:kind/*` - **per-processor charge proxy.** Forwards to the backend configured for that `kind` (e.g. `/api/checkout/stripe/charge-initial` -> `{STRIPE_CHECKOUT_BACKEND_URL}/checkout/charge-initial`), attaching processor credentials server-side. Returns `404` for an unknown kind and `503 { demo: true }` when that processor's backend env var is unset, so each adapter degrades to demo independently. **Use without modification.**
-* `/api/omnicart/*` - proxies the OmniCart storefront API (full Medusa v2 cart lifecycle + promotions), attaching `x-publishable-api-key` server-side. A demo-mode guard short-circuits every path with `503 { demo: true }` when no backend is configured.
-* `/api/upsell/session` (POST) - initializes a post-purchase upsell session for a paid order via the OmniCart **Flow Builder** runtime; returns `{ session, entry_node }`.
+* `/api/checkout/:kind/*` - **per-processor charge proxy.** Forwards DIRECTLY to the backend configured for that `kind` (e.g. `/api/checkout/stripe/charge-initial` -> `{STRIPE_CHECKOUT_BACKEND_URL}/checkout/charge-initial`), attaching processor credentials server-side. Payments are **never routed through the Delegate platform (CORE)** - each app talks straight to its processor backend, so a CORE outage can't break checkout (blast-radius isolation). Returns `404` for an unknown kind and `503 { demo: true }` when that processor's backend env var is unset, so each adapter degrades to demo independently. **Use without modification.**
+* `/api/omnicart/*` - proxies the OmniCart storefront API (full Medusa v2 cart lifecycle + promotions) to `OMNICART_BACKEND_URL`, attaching `x-publishable-api-key` server-side. A demo-mode guard short-circuits every path with `503 { demo: true }` when no backend is configured. (Used in default same-origin mode; the direct `VITE_OMNICART_BACKEND_URL` override bypasses this.)
+* `/api/upsell/session` (POST) - initializes a post-purchase upsell session for a paid order via the OmniCart **Flow Builder** runtime, keeping the runtime token server-side; returns `{ session, entry_node }`. **Degradable:** if CORE is unreachable the client falls back to the baked `FLOW_SNAPSHOT` (or the demo flow), so a CORE outage never blocks the already-completed checkout.
 * `/api/upsell/click` (GET) - accepts/declines the current offer node and walks the flow graph; on accept it charges the saved payment method (one-click). **Use without modification.**
 * `/api/omnicart-config` - returns browser-safe config (Stripe publishable key + whether the backend/upsell runtime are configured) for initializing Stripe Elements and choosing live-vs-demo upsells.
 
@@ -147,7 +155,7 @@ After the initial charge, `CheckoutPage.handlePaid` calls `startUpsellFlow({ ord
 
 * **Multi-accept nodes**: when a node has `accept_options`, `UpsellOfferPage` shows a selector and sends the chosen option `id` as `variantId`.
 * **Branching**: design upsell -> downsell flows by pointing a node's `decline_next_button_id` at a cheaper node.
-* **Demo fallback**: when no backend is configured, the client walks the in-browser `DEMO_FLOW_NODES` (a 2-offer upsell->downsell + multi-accept example).
+* **Demo / offline fallback**: when CORE is unreachable or unconfigured, the client walks a LOCAL flow. Inject the merchant's real published flow into `FLOW_SNAPSHOT` (in `src/lib/upsell-flow.ts`) to fall back to their actual offers; leave it `null` to fall back to the built-in `DEMO_FLOW_NODES` (a 2-offer upsell->downsell + multi-accept example).
 
 Keep offer content in the flow (server / `DEMO_FLOW_NODES`), not hardcoded in components - `UpsellOfferPage` is a pure node renderer per route.
 
@@ -175,6 +183,8 @@ export const BRAND_THEME = {
 ```
 
 When the build request supplies a brand color palette, **set these values** — do NOT leave the defaults. The `theme` state seeds directly from `BRAND_THEME`, and the page injects a scoped `<style>` (`.checkout-root`) that pins the shadcn HSL tokens to LIGHT and applies the brand hex colors to `.bg-primary` / `.text-primary` / `.bg-accent` / focus rings. `/api/omnicart-config?code=` may still override per-checkout-code at runtime, merged over these defaults.
+
+Alongside `BRAND_THEME`, `CheckoutPage.tsx` exposes a `CONFIG_SNAPSHOT` constant (default `null`): bake the merchant's resolved product config into it so that, when the live config endpoint is unreachable, the cart still seeds the merchant's real products instead of the generic demo cart.
 
 * **Do NOT make the checkout dark by default** and do NOT add a dark-mode toggle to the checkout — the storefront strips the document `.dark` class on mount.
 * **Do NOT use HSL triplets for the injected brand colors** — `BRAND_THEME` colors are plain CSS color strings (hex/rgb). The HSL token variables in the scoped `<style>` stay in `H S% L%` form because they are consumed via `hsl(var(--token))`.
@@ -248,12 +258,21 @@ Configured in `wrangler.jsonc` / dashboard (do NOT edit `wrangler.jsonc` from th
 * **OMNICART_UPSELL_RUNTIME_TOKEN** - service token for the upsell runtime (Bearer, server-side only).
 * **STRIPE_PUBLISHABLE_KEY** - Stripe publishable key, returned to the browser via `/api/omnicart-config`.
 
-Each processor's charge backend is independent: leave a processor's env var unset and that processor's `/api/checkout/:kind/*` calls return `503 { demo: true }`, so the adapter runs in demo mode while the others stay live.
+Each processor's charge backend is independent: leave a processor's env var unset and that processor's `/api/checkout/:kind/*` calls return `503 { demo: true }`, so the adapter runs in demo mode while the others stay live. Payment charges always go **directly** to these processor backends and **never** through the Delegate platform (CORE), so a CORE outage cannot break checkout.
+
+## Direct-Medusa override (client build vars, optional)
+
+By default the storefront reaches OmniCart through the same-origin Worker proxy (above). To instead connect the browser **directly** to a merchant's own Medusa (self-hosted or Medusa Cloud) — e.g. a backend they already linked with DelegateCore/DelegateBuild — set these **client build** variables (both are browser-safe by Medusa's design):
+
+* **VITE_OMNICART_BACKEND_URL** - ABSOLUTE Medusa backend URL. When set, the Medusa SDK connects straight to it (bypassing the Worker proxy). The backend must allow the storefront origin in its `store_cors`.
+* **VITE_OMNICART_PUBLISHABLE_KEY** - the Medusa publishable key (scoped to a sales channel) for that backend.
+
+Leave both unset to use the default same-origin proxy + `OMNICART_BACKEND_URL` (with the built-in demo fallback).
 
 # Important Notes
 
 * The route flow `/c/:code` (cart -> shipping -> payment on-page sections) -> `/upsell/:sessionId` (one offer per route) -> `/success` (receipt) is the core of this template. Build your storefront around these routes rather than replacing them or collapsing them back into a single page.
 * The initial charge is **processor-agnostic** - add or swap a gateway by implementing a `CheckoutProcessorAdapter` (manifest entry + registry thunk), not by editing `CheckoutPage`.
 * The upsell offers are driven by the Flow Builder graph, not hardcoded in `UpsellOfferPage`, and run regardless of the initial processor.
-* Keep secrets server-side: only the Stripe **publishable** key and OmniCart public config ever reach the browser.
+* Keep secrets server-side: only browser-safe values ever reach the client — the Stripe **publishable** key, OmniCart public config, and (in direct-Medusa override mode) the Medusa backend URL + **publishable** key. Processor secret keys and the upsell runtime token stay on the Worker.
 * **Do not edit/add/remove worker bindings or touch `wrangler.jsonc`/`wrangler.toml`.** Build around what is provided.
