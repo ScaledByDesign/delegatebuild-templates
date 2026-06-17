@@ -145,6 +145,29 @@ Rules:
   automatically — do not add provider keys to `wrangler.jsonc`.
 - Keep prompts bounded (the gateway caps ~50 messages / ~48k chars per call).
 
+## Deeplinks (open the app to a specific place)
+Delegate forwards `openApp(appId, props)` values — the platform deeplink pattern —
+into this app over the bridge. Read them with `useDelegateDeeplink()`
+(`src/lib/delegate-deeplink.ts`) and route accordingly:
+
+```tsx
+import { useDelegateDeeplink } from "@/lib/delegate-deeplink";
+
+const launch = useDelegateDeeplink(); // e.g. { view: "items", filter: "open" }
+useEffect(() => {
+  if (launch.view) setView(launch.view as View);
+}, [launch]);
+```
+
+Both entry points map to the same params:
+- cross-app: `openApp("plugin:my-app", { view: "items", filter: "open" })`
+- URL: `/webos?app=plugin:my-app&view=items&filter=open`
+
+Pick stable param keys (e.g. `view`, `tab`, `id`, `q`) and document them — these
+are this app's public deeplink surface. Values arrive as-is (URL params are
+strings; parse as needed). The hook re-fires if the host re-deeplinks a live
+window.
+
 ## Routing
 Uses `createBrowserRouter` in `src/main.tsx`. Add routes there with
 `errorElement: <RouteErrorBoundary />`. Do NOT switch to `BrowserRouter` /

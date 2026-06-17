@@ -12,14 +12,17 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { RouteErrorBoundary } from '@/components/RouteErrorBoundary';
 import { initDelegateTheme } from '@/lib/delegate-theme';
 import { initDelegateAuth } from '@/lib/delegate-auth';
+import { initDelegateDeeplink } from '@/lib/delegate-deeplink';
 import '@/index.css'
 import { WebOSHome } from '@/pages/WebOSHome'
 
-// Apply WebOS theme tokens from the Delegate host (or OS fallback) BEFORE first
-// paint so there's no flash of the wrong theme, and start receiving the access
-// token the host pushes for this app's private data API.
+// Start the host bridges BEFORE first paint:
+//  - theme tokens (no flash of the wrong theme),
+//  - access token for this app's private data API,
+//  - deeplink/launch params (openApp(appId, props) equivalent).
 initDelegateTheme();
 initDelegateAuth();
+initDelegateDeeplink();
 
 const queryClient = new QueryClient();
 

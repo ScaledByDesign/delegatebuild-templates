@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutGrid,
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useDelegateAI } from "@/lib/delegate-ai";
 import { withAppAuth } from "@/lib/delegate-auth";
+import { useDelegateDeeplink } from "@/lib/delegate-deeplink";
 import { AppScrollContainer } from "@/components/webos/AppScrollContainer";
 import {
   AppLoadingState,
@@ -69,6 +70,15 @@ export function WebOSHome() {
   const { confirm, ConfirmDialog } = useConfirm();
   const [view, setView] = useState<View>("overview");
   const [filter, setFilter] = useState<Filter>("all");
+
+  // Deeplink: react to openApp("plugin:…", { view, filter }) / ?view=&filter=.
+  const launch = useDelegateDeeplink();
+  useEffect(() => {
+    if (launch.view === "overview" || launch.view === "items") setView(launch.view);
+    if (launch.filter === "all" || launch.filter === "open" || launch.filter === "done") {
+      setFilter(launch.filter as Filter);
+    }
+  }, [launch]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
 
