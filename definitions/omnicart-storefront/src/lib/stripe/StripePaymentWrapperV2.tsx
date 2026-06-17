@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Elements } from '@stripe/react-stripe-js';
-import { loadStripe } from '@stripe/stripe-js';
+import { loadStripe, type StripeElementsOptions } from '@stripe/stripe-js';
 
 interface StripePaymentWrapperV2Props {
   children: React.ReactNode;
@@ -46,7 +46,7 @@ export const StripePaymentWrapperV2: React.FC<StripePaymentWrapperV2Props> = ({
 
   // If we have a clientSecret, use it to initialize Elements with the PaymentIntent
   // Otherwise, use deferred mode until payment session is created
-  const options = useMemo(() => {
+  const options = useMemo<StripeElementsOptions>(() => {
     if (clientSecret) {
       return {
         clientSecret,
@@ -64,7 +64,7 @@ export const StripePaymentWrapperV2: React.FC<StripePaymentWrapperV2Props> = ({
           },
         },
         loader: 'auto' as const,
-      };
+      } as StripeElementsOptions;
     } else {
       // Deferred mode - used before payment session is created
       return {
@@ -85,7 +85,7 @@ export const StripePaymentWrapperV2: React.FC<StripePaymentWrapperV2Props> = ({
           },
         },
         loader: 'auto' as const,
-      };
+      } as StripeElementsOptions;
     }
   }, [clientSecret]);
 

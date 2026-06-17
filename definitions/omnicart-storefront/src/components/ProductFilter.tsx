@@ -14,6 +14,7 @@ interface ProductFilterProps {
   onFiltersChange: (filters: FilterOptions) => void;
   availableCategories: string[];
   availableCollections: string[];
+  maxPrice?: number;
   className?: string;
 }
 

@@ -205,13 +205,13 @@ export const ExpressCheckout: React.FC<ExpressCheckoutProps> = ({
       const shippingName = event.shippingAddress?.name?.trim();
       if (!shippingLine1) {
         console.error('🚨 CRITICAL: No street address!');
-        event.paymentFailed({reason:'invalid_shipping_address',message:'Please provide a complete street address'});
+        event.paymentFailed({reason:'invalid_shipping_address'});
         onError('Shipping address is incomplete.');
         return;
       }
       if (!shippingName) {
         console.error('🚨 CRITICAL: No name!');
-        event.paymentFailed({reason:'invalid_shipping_address',message:'Please provide your name'});
+        event.paymentFailed({reason:'invalid_shipping_address'});
         onError('Shipping name is required.');
         return;
       }
@@ -225,7 +225,6 @@ export const ExpressCheckout: React.FC<ExpressCheckoutProps> = ({
           console.error('❌ Express Checkout shipping address confirmation failed:', addressError);
           event.paymentFailed({
             reason: 'invalid_shipping_address',
-            message,
           });
           onError(message);
           return;
@@ -283,8 +282,9 @@ export const ExpressCheckout: React.FC<ExpressCheckoutProps> = ({
           // Attach express checkout data to paymentIntent for use in handlePaymentSuccess
           const enrichedPaymentIntent = {
             ...paymentIntent,
-            // Add express checkout billing/shipping if not in paymentIntent
-            billing_details: paymentIntent.billing_details || event.billingDetails,
+            // Add express checkout billing/shipping (the Stripe PaymentIntent
+            // type carries no billing_details; it comes from the wallet event).
+            billing_details: event.billingDetails,
             expressCheckoutData: {
               billingDetails: event.billingDetails,
               shippingAddress: event.shippingAddress,

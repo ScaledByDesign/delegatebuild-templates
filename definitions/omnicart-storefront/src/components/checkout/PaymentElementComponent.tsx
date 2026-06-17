@@ -278,7 +278,7 @@ export const PaymentElementComponent: React.FC<
           console.log("✅ Payment succeeded, PaymentIntent:", paymentIntent.id);
           console.log(
             "💳 Billing address from PaymentIntent:",
-            paymentIntent.billing_details?.address,
+            (paymentIntent as { billing_details?: { address?: unknown } }).billing_details?.address,
           );
 
           // CRITICAL: Save recovery data IMMEDIATELY after payment capture,
@@ -301,10 +301,27 @@ export const PaymentElementComponent: React.FC<
           // Email is already synced from our custom input field
           // No need to sync email from PaymentIntent since we're not collecting it there
 
-          // Sync actual billing address from PaymentIntent to Medusa cart
-          if (cartId && paymentIntent.billing_details) {
+          // Sync actual billing address from PaymentIntent to Medusa cart. The
+          // Stripe PaymentIntent type carries no billing_details, so read it
+          // through a narrow typed view.
+          const billingDetails = (
+            paymentIntent as {
+              billing_details?: {
+                name?: string | null;
+                phone?: string | null;
+                address?: {
+                  line1?: string | null;
+                  line2?: string | null;
+                  city?: string | null;
+                  state?: string | null;
+                  postal_code?: string | null;
+                  country?: string | null;
+                } | null;
+              };
+            }
+          ).billing_details;
+          if (cartId && billingDetails) {
             try {
-              const billingDetails = paymentIntent.billing_details;
 
               // Format name parts with proper capitalization
               const nameParts = billingDetails.name?.split(" ") || [];

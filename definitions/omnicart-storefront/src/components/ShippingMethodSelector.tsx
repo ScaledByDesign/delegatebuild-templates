@@ -73,7 +73,7 @@ export function ShippingMethodSelector({
       // Set the currently selected option
       const currentOption = cart?.shipping_methods?.[0]?.shipping_option_id
       if (currentOption) {
-        setSelectedOptionId(currentOption)
+        setSelectedOptionId(String(currentOption))
       }
     } catch (err) {
       console.error('Error loading shipping options:', err)

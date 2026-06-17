@@ -419,7 +419,10 @@ const ProductDetail: React.FC = () => {
       trackProductView({
         id: product.id,
         title: product.title,
-        price: selectedVariant.calculated_price || 0,
+        price:
+          typeof selectedVariant.calculated_price === 'number'
+            ? selectedVariant.calculated_price
+            : selectedVariant.calculated_price?.calculated_amount || 0,
         category: product.collection?.title || undefined,
         variant_id: selectedVariant.id,
         // Only include image_url if we have a value (Attentive best practice: avoid empty strings)

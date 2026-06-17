@@ -2,11 +2,11 @@ import React from 'react';
 import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { Loader2, Lock } from 'lucide-react';
-import type { Cart } from '@medusajs/types';
+import type { HttpTypes } from '@medusajs/types';
 import { medusaClient } from '@/lib/medusa-client';
 
 interface PaymentCollectionStepProps {
-  cart: Cart | null;
+  cart: HttpTypes.StoreCart | null;
   clientSecret: string;
   onSuccess: (orderId: string) => void;
   onError: (error: string) => void;

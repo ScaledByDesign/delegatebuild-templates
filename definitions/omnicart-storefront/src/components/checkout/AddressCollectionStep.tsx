@@ -2,10 +2,10 @@ import React from 'react';
 import { AddressElement } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import type { Cart } from '@medusajs/types';
+import type { HttpTypes } from '@medusajs/types';
 
 interface AddressCollectionStepProps {
-  cart: Cart | null;
+  cart: HttpTypes.StoreCart | null;
   onAddressComplete: (address: any) => Promise<void>;
   onContinueToPayment: () => void;
   isUpdating: boolean;
