@@ -1902,8 +1902,9 @@ const ExpressCheckout = () => {
 
               {/* Email Address (Outside Stripe - Matches Original) */}
               <div className="border border-gray-200 rounded-lg p-4 mb-4">
-                <h4 className="text-sm font-semibold mb-3 text-gray-700">Email Address</h4>
+                <label htmlFor="checkout-email" className="block text-sm font-semibold mb-3 text-gray-700">Email Address</label>
                 <input
+                  id="checkout-email"
                   type="email"
                   name="email"
                   autoComplete="email"
@@ -1911,6 +1912,9 @@ const ExpressCheckout = () => {
                   onChange={handleEmailChange}
                   placeholder="your.email@example.com"
                   required
+                  aria-required="true"
+                  aria-invalid={emailError ? true : undefined}
+                  aria-describedby="checkout-email-help"
                   className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-black ${
                     emailError ? 'border-red-500' : 'border-gray-300'
                   }`}
@@ -1920,9 +1924,9 @@ const ExpressCheckout = () => {
                   }}
                 />
                 {emailError ? (
-                  <p className="text-xs text-red-500 mt-2">{emailError}</p>
+                  <p id="checkout-email-help" role="alert" className="text-xs text-red-500 mt-2">{emailError}</p>
                 ) : (
-                  <p className="text-xs text-gray-500 mt-2">
+                  <p id="checkout-email-help" className="text-xs text-gray-500 mt-2">
                     We'll send your order confirmation and receipt to this email address.
                   </p>
                 )}

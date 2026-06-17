@@ -1,41 +1,44 @@
-
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
-import ProductDetail from "./pages/ProductDetail";
-import Collection from "./pages/Collection";
-import Collections from "./pages/Collections";
-import CollectionDetail from "./pages/CollectionDetail";
-import Cart from "./pages/Cart";
 
-import CheckoutSuccess from "./pages/CheckoutSuccess";
-import QuickCheckout from "./pages/QuickCheckout";
-import ExpressCheckout from "./pages/ExpressCheckout";
-import Receipt from "./pages/Receipt";
-import TrackOrder from "./pages/TrackOrder";
-import Returns from "./pages/Returns";
-import About from "./pages/About";
-import Contact from "./pages/Contact";
-import Search from "./pages/Search";
-import CancelMembership from "./pages/CancelMembership";
-import ThankYou from "./pages/ThankYou";
-import TrnCancelForm from "./pages/TrnCancelForm";
-import TermsDisclaimer from "./pages/TermsDisclaimer";
-import ShippingPolicy from "./pages/ShippingPolicy";
-import ReturnPolicy from "./pages/ReturnPolicy";
-import PrivacyPolicy from "./pages/PrivacyPolicy";
-import WhitelistInstruction from "./pages/WhitelistInstruction";
-import Account from "./pages/Account";
-import Login from "./pages/Login";
-import Signup from "./pages/Signup";
-import ForgotPassword from "./pages/ForgotPassword";
-import GiftCards from "./pages/GiftCards";
-import Wishlist from "./pages/Wishlist";
-import Loyalty from "./pages/Loyalty";
-import Admin from "./pages/Admin";
+// Route pages are code-split: each loads its own chunk on demand so navigating
+// to a page (checkout included) only downloads that page's code instead of the
+// whole app. The homepage (Index) stays eager for the fastest landing LCP.
+const ProductDetail = lazy(() => import("./pages/ProductDetail"));
+const Collection = lazy(() => import("./pages/Collection"));
+const Collections = lazy(() => import("./pages/Collections"));
+const CollectionDetail = lazy(() => import("./pages/CollectionDetail"));
+const Cart = lazy(() => import("./pages/Cart"));
+const CheckoutSuccess = lazy(() => import("./pages/CheckoutSuccess"));
+const QuickCheckout = lazy(() => import("./pages/QuickCheckout"));
+const ExpressCheckout = lazy(() => import("./pages/ExpressCheckout"));
+const Receipt = lazy(() => import("./pages/Receipt"));
+const TrackOrder = lazy(() => import("./pages/TrackOrder"));
+const Returns = lazy(() => import("./pages/Returns"));
+const About = lazy(() => import("./pages/About"));
+const Contact = lazy(() => import("./pages/Contact"));
+const Search = lazy(() => import("./pages/Search"));
+const CancelMembership = lazy(() => import("./pages/CancelMembership"));
+const ThankYou = lazy(() => import("./pages/ThankYou"));
+const TrnCancelForm = lazy(() => import("./pages/TrnCancelForm"));
+const TermsDisclaimer = lazy(() => import("./pages/TermsDisclaimer"));
+const ShippingPolicy = lazy(() => import("./pages/ShippingPolicy"));
+const ReturnPolicy = lazy(() => import("./pages/ReturnPolicy"));
+const PrivacyPolicy = lazy(() => import("./pages/PrivacyPolicy"));
+const WhitelistInstruction = lazy(() => import("./pages/WhitelistInstruction"));
+const Account = lazy(() => import("./pages/Account"));
+const Login = lazy(() => import("./pages/Login"));
+const Signup = lazy(() => import("./pages/Signup"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const GiftCards = lazy(() => import("./pages/GiftCards"));
+const Wishlist = lazy(() => import("./pages/Wishlist"));
+const Loyalty = lazy(() => import("./pages/Loyalty"));
+const Admin = lazy(() => import("./pages/Admin"));
 import ProtectedRoute from "./components/ProtectedRoute";
 import { CartProvider } from "./hooks/useCart";
 import { CustomerProvider } from "./hooks/useCustomer";
@@ -53,6 +56,14 @@ import { useAttributionCapture } from "./hooks/useAttributionCapture";
 
 const queryClient = new QueryClient();
 
+/** Accessible fallback shown while a route's code chunk loads. */
+const RouteFallback = () => (
+  <div className="flex min-h-[50vh] items-center justify-center" role="status" aria-live="polite">
+    <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900" aria-hidden="true"></div>
+    <span className="sr-only">Loading…</span>
+  </div>
+);
+
 const AppContent = () => {
   // Capture Rumble click ID and UTM params on first render
   useAttributionCapture();
@@ -66,6 +77,7 @@ const AppContent = () => {
       <AnnouncementBars />
       {/* Yotpo Reviews Tab widget - renders floating tab on left side */}
       <ReviewsStickyTab />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/" element={<Index />} />
         {/* Shopify-compatible routes for 1:1 parity */}
@@ -130,6 +142,7 @@ const AppContent = () => {
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<RedirectHandler />} />
       </Routes>
+      </Suspense>
     </>
   );
 };
