@@ -190,34 +190,78 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // --- OmniCart storefront proxy --------------------------------------------
   app.all('/api/omnicart/*', async (c) => {
     const env = c.env as OmniCartEnv;
-    const backend = env.OMNICART_BACKEND_URL || 'https://demo.omnicart.commerce';
+
+    // Normalize the backend URL: trim, and ensure an absolute https:// origin so
+    // the Worker subrequest is valid (a bare host like "shop.example.com" or a
+    // relative value would make fetch throw an opaque "internal error").
+    let backend = (env.OMNICART_BACKEND_URL || '').trim();
+    if (backend && !/^https?:\/\//i.test(backend)) {
+      backend = `https://${backend}`;
+    }
+
+    const reqUrl = new URL(c.req.url);
     const upstreamPath = c.req.path.replace(/^\/api\/omnicart/, '');
     const targetPath = upstreamPath.startsWith('/store') ? upstreamPath : `/store${upstreamPath}`;
-    const url = new URL(c.req.url);
-    const target = `${backend.replace(/\/$/, '')}${targetPath}${url.search}`;
+    const target = `${backend.replace(/\/$/, '')}${targetPath}${reqUrl.search}`;
 
-    const headers = new Headers(c.req.raw.headers);
-    headers.delete('host');
+    let targetUrl: URL;
+    try {
+      targetUrl = new URL(target);
+    } catch {
+      console.error(`[omnicart-proxy] invalid OMNICART_BACKEND_URL: "${env.OMNICART_BACKEND_URL}"`);
+      return c.json(
+        { success: false, error: 'OmniCart backend misconfigured: OMNICART_BACKEND_URL is not a valid URL.' },
+        502,
+      );
+    }
+
+    // Guard against a self-referential backend (OMNICART_BACKEND_URL pointing at
+    // this app's own host). Fetching it would loop and Cloudflare returns an
+    // opaque "internal error; reference = ...". Fail fast with a clear message.
+    if (targetUrl.host === reqUrl.host) {
+      console.error(`[omnicart-proxy] backend loops back at app host "${reqUrl.host}"; fix OMNICART_BACKEND_URL`);
+      return c.json(
+        { success: false, error: `OmniCart backend misconfigured: OMNICART_BACKEND_URL points back at this app (${reqUrl.host}). Set it to the OmniCart server URL.` },
+        502,
+      );
+    }
+
+    // Forward only what the store API needs. Copying all inbound headers (host,
+    // cf-*, content-length, etc.) to a third-party origin can break the upstream
+    // request and leaks client headers.
+    const headers = new Headers();
+    headers.set('accept', 'application/json');
+    const contentType = c.req.header('content-type');
+    if (contentType) headers.set('content-type', contentType);
+    const cookie = c.req.header('cookie');
+    if (cookie) headers.set('cookie', cookie);
+    const authorization = c.req.header('authorization');
+    if (authorization) headers.set('authorization', authorization);
     if (env.OMNICART_PUBLISHABLE_KEY) {
       headers.set('x-publishable-api-key', env.OMNICART_PUBLISHABLE_KEY);
     }
 
+    const method = c.req.method;
     const init: RequestInit = {
-      method: c.req.method,
+      method,
       headers,
-      body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+      body: ['GET', 'HEAD'].includes(method) ? undefined : c.req.raw.body,
     };
 
     try {
-      const upstream = await fetch(target, init);
+      const upstream = await fetch(targetUrl.toString(), init);
       const resBody = await upstream.arrayBuffer();
-      return new Response(resBody, {
-        status: upstream.status,
-        headers: { 'content-type': upstream.headers.get('content-type') || 'application/json' },
-      });
+      const resHeaders = new Headers();
+      resHeaders.set('content-type', upstream.headers.get('content-type') || 'application/json');
+      const setCookie = upstream.headers.get('set-cookie');
+      if (setCookie) resHeaders.append('set-cookie', setCookie);
+      return new Response(resBody, { status: upstream.status, headers: resHeaders });
     } catch (err) {
+      const detail = err instanceof Error ? err.message : 'unknown';
+      // Log the full target server-side; surface only the host to the client.
+      console.error(`[omnicart-proxy] ${method} ${targetUrl.toString()} failed: ${detail}`);
       return c.json(
-        { success: false, error: `OmniCart backend unreachable: ${err instanceof Error ? err.message : 'unknown'}` },
+        { success: false, error: `OmniCart backend unreachable (${targetUrl.host})`, detail },
         502,
       );
     }
