@@ -14,7 +14,37 @@ let nextRetryAt = 0;
 let userRoutesLoaded = false;
 let userRoutesLoadError: string | null = null;
 
-const safeLoadUserRoutes = async (app: Hono<{ Bindings: Env }>) => {
+export type ClientErrorReport = { message: string; url: string; timestamp: string } & Record<string, unknown>;
+
+const createApp = () => {
+  const app = new Hono<{ Bindings: Env }>();
+
+  app.use('*', logger());
+
+  app.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
+
+  app.get('/api/health', (c) => c.json({ success: true, data: { status: 'healthy', timestamp: new Date().toISOString() }}));
+
+  app.post('/api/client-errors', async (c) => {
+    try {
+      const e = await c.req.json<ClientErrorReport>();
+      console.error('[CLIENT ERROR]', JSON.stringify({ timestamp: e.timestamp || new Date().toISOString(), message: e.message, url: e.url, stack: e.stack, componentStack: e.componentStack, errorBoundary: e.errorBoundary }, null, 2));
+      return c.json({ success: true });
+    } catch (error) {
+      console.error('[CLIENT ERROR HANDLER] Failed:', error);
+      return c.json({ success: false, error: 'Failed to process' }, 500);
+    }
+  });
+
+  app.notFound((c) => c.json({ success: false, error: 'Not Found' }, 404));
+  app.onError((err, c) => { console.error(`[ERROR] ${err}`); return c.json({ success: false, error: 'Internal Server Error' }, 500); });
+
+  return app;
+};
+
+let activeApp = createApp();
+
+const safeLoadUserRoutes = async () => {
   if (userRoutesLoaded) return;
 
   const now = Date.now();
@@ -26,38 +56,16 @@ const safeLoadUserRoutes = async (app: Hono<{ Bindings: Env }>) => {
   const spec = `${USER_ROUTES_MODULE}${bust}`;
 
   try {
+    const newApp = createApp();
     const mod = (await import(/* @vite-ignore */ spec)) as UserRoutesModule;
-    mod.userRoutes(app);
+    mod.userRoutes(newApp);
+    activeApp = newApp;
     userRoutesLoaded = true;
     userRoutesLoadError = null;
   } catch (e) {
     userRoutesLoadError = e instanceof Error ? e.message : String(e);
   }
 };
-
-export type ClientErrorReport = { message: string; url: string; timestamp: string } & Record<string, unknown>;
-
-const app = new Hono<{ Bindings: Env }>();
-
-app.use('*', logger());
-
-app.use('/api/*', cors({ origin: '*', allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allowHeaders: ['Content-Type', 'Authorization'] }));
-
-app.get('/api/health', (c) => c.json({ success: true, data: { status: 'healthy', timestamp: new Date().toISOString() }}));
-
-app.post('/api/client-errors', async (c) => {
-  try {
-    const e = await c.req.json<ClientErrorReport>();
-    console.error('[CLIENT ERROR]', JSON.stringify({ timestamp: e.timestamp || new Date().toISOString(), message: e.message, url: e.url, stack: e.stack, componentStack: e.componentStack, errorBoundary: e.errorBoundary }, null, 2));
-    return c.json({ success: true });
-  } catch (error) {
-    console.error('[CLIENT ERROR HANDLER] Failed:', error);
-    return c.json({ success: false, error: 'Failed to process' }, 500);
-  }
-});
-
-app.notFound((c) => c.json({ success: false, error: 'Not Found' }, 404));
-app.onError((err, c) => { console.error(`[ERROR] ${err}`); return c.json({ success: false, error: 'Internal Server Error' }, 500); });
 
 console.log(`Server is running`)
 
@@ -66,7 +74,7 @@ export default {
     const pathname = new URL(request.url).pathname;
 
     if (pathname.startsWith('/api/') && pathname !== '/api/health' && pathname !== '/api/client-errors') {
-      await safeLoadUserRoutes(app);
+      await safeLoadUserRoutes();
       if (userRoutesLoadError) {
         return new Response(
           JSON.stringify({
@@ -79,6 +87,6 @@ export default {
       }
     }
 
-    return app.fetch(request, env, ctx);
+    return activeApp.fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;

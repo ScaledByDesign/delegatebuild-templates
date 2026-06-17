@@ -34,7 +34,67 @@ let userRoutesLoadError: string | null = null;
 const RETRY_MS = 750;
 let nextRetryAt = 0;
 
-const safeLoadUserRoutes = async (app: Hono<{ Bindings: Env }>) => {
+const createApp = () => {
+  const app = new Hono<{ Bindings: Env }>();
+
+  /** DO NOT TOUCH THE CODE BELOW THIS LINE */
+  // Middleware
+  app.use("*", logger());
+
+  app.use(
+    "/api/*",
+    cors({
+      origin: "*",
+      allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+      allowHeaders: ["Content-Type", "Authorization"],
+    })
+  );
+
+  app.get("/api/health", (c) =>
+    c.json({
+      success: true,
+      data: {
+        status: "healthy",
+        timestamp: new Date().toISOString(),
+      },
+    })
+  );
+
+  app.post("/api/client-errors", async (c) => {
+    try {
+      const errorReport = await c.req.json<ClientErrorReport>();
+      console.error("[CLIENT ERROR]", {
+        ...errorReport,
+      });
+      return c.json({ success: true });
+    } catch (error) {
+      console.error("[CLIENT ERROR HANDLER] Failed:", error);
+      return c.json(
+        {
+          success: false,
+          error: "Failed to process error report",
+        },
+        { status: 500 }
+      );
+    }
+  });
+
+  app.notFound((c) =>
+    c.json(
+      {
+        success: false,
+        error: API_RESPONSES.NOT_FOUND,
+      },
+      { status: 404 }
+    )
+  );
+
+  return app;
+};
+
+let activeApp = createApp();
+
+const safeLoadUserRoutes = async () => {
   if (userRoutesLoaded) return;
 
   const now = Date.now();
@@ -43,10 +103,12 @@ const safeLoadUserRoutes = async (app: Hono<{ Bindings: Env }>) => {
   nextRetryAt = now + RETRY_MS;
 
   try {
+    const newApp = createApp();
     const spec = shouldRetry ? `./userRoutes?t=${now}` : "./userRoutes";
     const mod = (await import(/* @vite-ignore */ spec)) as UserRoutesModule;
-    mod.userRoutes(app);
-    mod.coreRoutes(app);
+    mod.userRoutes(newApp);
+    mod.coreRoutes(newApp);
+    activeApp = newApp;
     userRoutesLoaded = true;
     userRoutesLoadError = null;
   } catch (e) {
@@ -54,67 +116,12 @@ const safeLoadUserRoutes = async (app: Hono<{ Bindings: Env }>) => {
   }
 };
 
-const app = new Hono<{ Bindings: Env }>();
-
-/** DO NOT TOUCH THE CODE BELOW THIS LINE */
-// Middleware
-app.use("*", logger());
-
-app.use(
-  "/api/*",
-  cors({
-    origin: "*",
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-  })
-);
-
-
-app.get("/api/health", (c) =>
-  c.json({
-    success: true,
-    data: {
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-    },
-  })
-);
-
-app.post("/api/client-errors", async (c) => {
-  try {
-    const errorReport = await c.req.json<ClientErrorReport>();
-    console.error("[CLIENT ERROR]", {
-      ...errorReport,
-    });
-    return c.json({ success: true });
-  } catch (error) {
-    console.error("[CLIENT ERROR HANDLER] Failed:", error);
-    return c.json(
-      {
-        success: false,
-        error: "Failed to process error report",
-      },
-      { status: 500 }
-    );
-  }
-});
-
-app.notFound((c) =>
-  c.json(
-    {
-      success: false,
-      error: API_RESPONSES.NOT_FOUND,
-    },
-    { status: 404 }
-  )
-);
-
 export default {
   async fetch(request, env, ctx) {
     const pathname = new URL(request.url).pathname;
 
     if (pathname.startsWith("/api/") && pathname !== "/api/health" && pathname !== "/api/client-errors") {
-      await safeLoadUserRoutes(app);
+      await safeLoadUserRoutes();
       if (userRoutesLoadError) {
         return new Response(
           JSON.stringify({
@@ -127,6 +134,6 @@ export default {
       }
     }
 
-    return app.fetch(request, env, ctx);
+    return activeApp.fetch(request, env, ctx);
   },
 } satisfies ExportedHandler<Env>;
