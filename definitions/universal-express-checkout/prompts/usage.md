@@ -273,6 +273,7 @@ Leave both unset to use the default same-origin proxy + `OMNICART_BACKEND_URL` (
 
 A single broken file fails `vite build`, and the whole preview then returns a blank 500 — not just the page you changed. To customize safely:
 - **Prefer tokens over rewrites.** Do branding through `tailwind.config.js` (colors, fonts), global CSS, and swapping logo/image assets — this restyles the whole checkout without touching logic.
+- **Define a custom color BEFORE you use its class.** A custom color used in any `bg-*`/`text-*`/`border-*`/`ring-*` class — especially inside an `@apply` in global CSS — only exists if you first add it to `theme.extend.colors` in `tailwind.config.js`. `@apply bg-vanguard-obsidian/80` fails the CSS build with "The `bg-vanguard-obsidian/80` class does not exist" unless that token is defined there. When in doubt, use an arbitrary value (`bg-[#0b0b0f]/80`) or a raw CSS property instead of inventing a token.
 - **Every file you output must be complete and compile.** Resolve all imports, never reference a component/hook/export that does not exist, and keep imports a file still uses. No half-written files.
 - **Do not add new dependencies.** Use only packages already in `package.json` (a missing dependency breaks the deploy build).
 - **Do not change a component's export style** (default vs named) on an existing file; when you create a component, export it the same way the others do.
