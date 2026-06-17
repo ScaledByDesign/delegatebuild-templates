@@ -17,3 +17,7 @@ const PromotionalBanner = () => {
 };
 
 export default PromotionalBanner;
+
+// Also exported as a named export so either import style resolves
+// (`import PromotionalBanner from ...` or `import { PromotionalBanner } from ...`).
+export { PromotionalBanner };

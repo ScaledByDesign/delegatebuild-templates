@@ -69,3 +69,7 @@ export default function ReviewsStickyTab() {
     />
   );
 }
+
+// Also exported as a named export so either import style resolves
+// (`import ReviewsStickyTab from ...` or `import { ReviewsStickyTab } from ...`).
+export { ReviewsStickyTab };

@@ -291,3 +291,7 @@ const DiscountCode: React.FC<DiscountCodeProps> = ({
 };
 
 export default DiscountCode;
+
+// Also exported as a named export so either import style resolves
+// (`import DiscountCode from ...` or `import { DiscountCode } from ...`).
+export { DiscountCode };

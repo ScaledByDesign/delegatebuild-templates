@@ -12,3 +12,7 @@ const ScrollToTop = () => {
 };
 
 export default ScrollToTop;
+
+// Also exported as a named export so either import style resolves
+// (`import ScrollToTop from ...` or `import { ScrollToTop } from ...`).
+export { ScrollToTop };

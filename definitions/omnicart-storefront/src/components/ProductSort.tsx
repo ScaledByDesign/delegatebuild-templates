@@ -52,3 +52,7 @@ const ProductSort: React.FC<ProductSortProps> = ({
 };
 
 export default ProductSort;
+
+// Also exported as a named export so either import style resolves
+// (`import ProductSort from ...` or `import { ProductSort } from ...`).
+export { ProductSort };

@@ -155,3 +155,7 @@ export const useCartMismatchDetection = () => {
 };
 
 export default CartMismatchBanner;
+
+// Also exported as a named export so either import style resolves
+// (`import CartMismatchBanner from ...` or `import { CartMismatchBanner } from ...`).
+export { CartMismatchBanner };

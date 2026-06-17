@@ -193,10 +193,24 @@ export const CustomerProvider = ({ children }: { children: React.ReactNode }) =>
   );
 };
 
+// Safe fallback returned when the hook is used outside a CustomerProvider, so a
+// missing provider degrades gracefully (logged-out state) instead of crashing.
+const fallbackCustomer: CustomerContextType = {
+  customer: null,
+  isLoading: false,
+  isAuthenticated: false,
+  login: async () => false,
+  register: async () => false,
+  logout: async () => {},
+  updateProfile: async () => false,
+  refreshCustomer: async () => {},
+};
+
 export const useCustomer = () => {
   const context = useContext(CustomerContext);
   if (context === undefined) {
-    throw new Error("useCustomer must be used within a CustomerProvider");
+    console.warn("useCustomer used outside a CustomerProvider; returning safe defaults.");
+    return fallbackCustomer;
   }
   return context;
 };

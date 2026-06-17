@@ -11,3 +11,7 @@ export default function GetTenOffBadge() {
     </div>
   );
 }
+
+// Also exported as a named export so either import style resolves
+// (`import GetTenOffBadge from ...` or `import { GetTenOffBadge } from ...`).
+export { GetTenOffBadge };

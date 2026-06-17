@@ -43,3 +43,7 @@ const PromotionalBanners: React.FC = () => {
 };
 
 export default PromotionalBanners;
+
+// Also exported as a named export so either import style resolves
+// (`import PromotionalBanners from ...` or `import { PromotionalBanners } from ...`).
+export { PromotionalBanners };

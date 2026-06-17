@@ -47,3 +47,7 @@ const JsonLd = ({ data, id }: JsonLdProps) => {
 };
 
 export default JsonLd;
+
+// Also exported as a named export so either import style resolves
+// (`import JsonLd from ...` or `import { JsonLd } from ...`).
+export { JsonLd };

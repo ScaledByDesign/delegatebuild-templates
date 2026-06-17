@@ -198,3 +198,7 @@ const FeaturedProducts = () => {
 };
 
 export default FeaturedProducts;
+
+// Also exported as a named export so either import style resolves
+// (`import FeaturedProducts from ...` or `import { FeaturedProducts } from ...`).
+export { FeaturedProducts };

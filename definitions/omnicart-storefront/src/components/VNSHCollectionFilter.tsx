@@ -120,3 +120,7 @@ const VNSHCollectionFilter: React.FC<VNSHCollectionFilterProps> = ({ className =
 };
 
 export default VNSHCollectionFilter;
+
+// Also exported as a named export so either import style resolves
+// (`import VNSHCollectionFilter from ...` or `import { VNSHCollectionFilter } from ...`).
+export { VNSHCollectionFilter };

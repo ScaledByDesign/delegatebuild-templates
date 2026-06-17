@@ -51,3 +51,7 @@ const HeroBanner = () => {
 };
 
 export default HeroBanner;
+
+// Also exported as a named export so either import style resolves
+// (`import HeroBanner from ...` or `import { HeroBanner } from ...`).
+export { HeroBanner };

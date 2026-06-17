@@ -45,3 +45,7 @@ const ProductCard = ({ product }: { product: Product }) => {
 };
 
 export default ProductCard;
+
+// Also exported as a named export so either import style resolves
+// (`import ProductCard from ...` or `import { ProductCard } from ...`).
+export { ProductCard };

@@ -106,10 +106,24 @@ export const RegionProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// Safe fallback returned when the hook is used outside a RegionProvider, so a
+// missing provider degrades gracefully (USD formatting) instead of crashing the
+// whole app with a thrown error.
+const fallbackRegion: RegionContextType = {
+  region: null,
+  isLoading: false,
+  setRegion: () => {},
+  setRegionByCountry: async () => false,
+  formatPrice: (amount: number) =>
+    new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount),
+  currencyCode: "USD",
+};
+
 export const useRegion = () => {
   const context = useContext(RegionContext);
   if (context === undefined) {
-    throw new Error("useRegion must be used within a RegionProvider");
+    console.warn("useRegion used outside a RegionProvider; returning safe defaults.");
+    return fallbackRegion;
   }
   return context;
 };

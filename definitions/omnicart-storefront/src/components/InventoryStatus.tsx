@@ -158,3 +158,7 @@ export const getInventoryLevel = (
 };
 
 export default InventoryStatus;
+
+// Also exported as a named export so either import style resolves
+// (`import InventoryStatus from ...` or `import { InventoryStatus } from ...`).
+export { InventoryStatus };

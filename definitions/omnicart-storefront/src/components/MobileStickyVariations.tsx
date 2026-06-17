@@ -267,3 +267,7 @@ const MobileStickyVariations = ({
 };
 
 export default MobileStickyVariations;
+
+// Also exported as a named export so either import style resolves
+// (`import MobileStickyVariations from ...` or `import { MobileStickyVariations } from ...`).
+export { MobileStickyVariations };

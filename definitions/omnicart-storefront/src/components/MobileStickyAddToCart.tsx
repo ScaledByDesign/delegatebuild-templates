@@ -110,3 +110,7 @@ const MobileStickyAddToCart = ({
 };
 
 export default MobileStickyAddToCart;
+
+// Also exported as a named export so either import style resolves
+// (`import MobileStickyAddToCart from ...` or `import { MobileStickyAddToCart } from ...`).
+export { MobileStickyAddToCart };

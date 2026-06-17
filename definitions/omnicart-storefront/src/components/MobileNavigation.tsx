@@ -277,3 +277,7 @@ const MobileNavigation: React.FC<MobileNavigationProps> = ({ className = "" }) =
 };
 
 export default MobileNavigation;
+
+// Also exported as a named export so either import style resolves
+// (`import MobileNavigation from ...` or `import { MobileNavigation } from ...`).
+export { MobileNavigation };

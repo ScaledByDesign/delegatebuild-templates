@@ -45,3 +45,7 @@ const Testimonials = () => {
 };
 
 export default Testimonials;
+
+// Also exported as a named export so either import style resolves
+// (`import Testimonials from ...` or `import { Testimonials } from ...`).
+export { Testimonials };

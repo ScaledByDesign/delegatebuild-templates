@@ -122,3 +122,7 @@ const FreeShippingProgress: React.FC<FreeShippingProgressProps> = ({
 };
 
 export default FreeShippingProgress;
+
+// Also exported as a named export so either import style resolves
+// (`import FreeShippingProgress from ...` or `import { FreeShippingProgress } from ...`).
+export { FreeShippingProgress };

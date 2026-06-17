@@ -151,3 +151,7 @@ const CollectionProductCard: React.FC<CollectionProductCardComponentProps> = ({
 };
 
 export default CollectionProductCard;
+
+// Also exported as a named export so either import style resolves
+// (`import CollectionProductCard from ...` or `import { CollectionProductCard } from ...`).
+export { CollectionProductCard };

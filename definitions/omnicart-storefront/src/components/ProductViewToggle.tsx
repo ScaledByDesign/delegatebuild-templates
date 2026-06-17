@@ -53,3 +53,7 @@ const ProductViewToggle: React.FC<ProductViewToggleProps> = ({
 
 export default ProductViewToggle;
 
+
+// Also exported as a named export so either import style resolves
+// (`import ProductViewToggle from ...` or `import { ProductViewToggle } from ...`).
+export { ProductViewToggle };

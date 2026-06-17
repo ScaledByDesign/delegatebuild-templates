@@ -659,3 +659,7 @@ export default function ReviewsDrawerManager() {
   // This component doesn't render anything visible - it just manages the drawer
   return null;
 }
+
+// Also exported as a named export so either import style resolves
+// (`import ReviewsDrawerManager from ...` or `import { ReviewsDrawerManager } from ...`).
+export { ReviewsDrawerManager };

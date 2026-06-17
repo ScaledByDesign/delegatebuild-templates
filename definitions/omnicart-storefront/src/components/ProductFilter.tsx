@@ -219,3 +219,7 @@ const ProductFilter: React.FC<ProductFilterProps> = ({
 };
 
 export default ProductFilter;
+
+// Also exported as a named export so either import style resolves
+// (`import ProductFilter from ...` or `import { ProductFilter } from ...`).
+export { ProductFilter };

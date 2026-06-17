@@ -16,3 +16,7 @@ const AOSInitializer = () => {
 
 export default AOSInitializer;
 
+
+// Also exported as a named export so either import style resolves
+// (`import AOSInitializer from ...` or `import { AOSInitializer } from ...`).
+export { AOSInitializer };

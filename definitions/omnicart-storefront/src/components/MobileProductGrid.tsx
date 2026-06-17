@@ -247,3 +247,7 @@ const MobileProductGrid: React.FC<MobileProductGridProps> = ({
 };
 
 export default MobileProductGrid;
+
+// Also exported as a named export so either import style resolves
+// (`import MobileProductGrid from ...` or `import { MobileProductGrid } from ...`).
+export { MobileProductGrid };

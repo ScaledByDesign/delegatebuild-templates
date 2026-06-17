@@ -49,3 +49,7 @@ const GuaranteeBadges = () => {
 };
 
 export default GuaranteeBadges;
+
+// Also exported as a named export so either import style resolves
+// (`import GuaranteeBadges from ...` or `import { GuaranteeBadges } from ...`).
+export { GuaranteeBadges };

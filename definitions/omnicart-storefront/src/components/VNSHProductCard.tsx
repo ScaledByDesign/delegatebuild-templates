@@ -109,4 +109,8 @@ const VNSHProductCard: React.FC<VNSHProductCardProps> = ({ product }) => {
   );
 };
 
+// Exported as BOTH a named and the default export so either import style
+// resolves (`import VNSHProductCard from ...` or `import { VNSHProductCard }`),
+// preventing 'does not provide an export named VNSHProductCard' errors.
+export { VNSHProductCard };
 export default VNSHProductCard;

@@ -353,10 +353,24 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// Safe fallback returned when the hook is used outside a CartProvider, so a
+// missing provider degrades gracefully (empty cart) instead of crashing.
+const fallbackCart: CartContextType = {
+  cart: null,
+  isLoading: false,
+  addItem: async () => {},
+  removeItem: async () => {},
+  updateItemQuantity: async () => {},
+  clearCart: () => {},
+  refreshCart: async () => {},
+  setCart: () => {},
+};
+
 export const useCart = () => {
   const context = useContext(CartContext);
   if (context === undefined) {
-    throw new Error("useCart must be used within a CartProvider");
+    console.warn("useCart used outside a CartProvider; returning safe defaults.");
+    return fallbackCart;
   }
   return context;
 };

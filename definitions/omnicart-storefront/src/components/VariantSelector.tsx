@@ -131,3 +131,7 @@ const VariantSelector: React.FC<VariantSelectorProps> = ({
 };
 
 export default VariantSelector;
+
+// Also exported as a named export so either import style resolves
+// (`import VariantSelector from ...` or `import { VariantSelector } from ...`).
+export { VariantSelector };

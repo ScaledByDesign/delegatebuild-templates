@@ -33,3 +33,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
 };
 
 export default ProtectedRoute;
+
+// Also exported as a named export so either import style resolves
+// (`import ProtectedRoute from ...` or `import { ProtectedRoute } from ...`).
+export { ProtectedRoute };

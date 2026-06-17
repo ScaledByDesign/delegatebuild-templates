@@ -155,3 +155,7 @@ const CartSummaryPopover: React.FC = () => {
 };
 
 export default CartSummaryPopover;
+
+// Also exported as a named export so either import style resolves
+// (`import CartSummaryPopover from ...` or `import { CartSummaryPopover } from ...`).
+export { CartSummaryPopover };

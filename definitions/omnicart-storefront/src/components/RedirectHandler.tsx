@@ -105,3 +105,7 @@ const NotFoundPage = ({ pathname }: { pathname: string }) => {
 
 export default RedirectHandler;
 
+
+// Also exported as a named export so either import style resolves
+// (`import RedirectHandler from ...` or `import { RedirectHandler } from ...`).
+export { RedirectHandler };

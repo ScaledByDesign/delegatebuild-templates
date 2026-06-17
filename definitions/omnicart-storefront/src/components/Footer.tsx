@@ -259,3 +259,7 @@ const Footer = () => {
     </footer>;
 };
 export default Footer;
+
+// Also exported as a named export so either import style resolves
+// (`import Footer from ...` or `import { Footer } from ...`).
+export { Footer };

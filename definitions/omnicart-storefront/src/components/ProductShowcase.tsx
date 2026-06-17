@@ -38,3 +38,7 @@ const ProductShowcase = () => {
 
 export default ProductShowcase;
 
+
+// Also exported as a named export so either import style resolves
+// (`import ProductShowcase from ...` or `import { ProductShowcase } from ...`).
+export { ProductShowcase };

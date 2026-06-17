@@ -30,10 +30,26 @@ interface WishlistContextType {
 
 const WishlistContext = createContext<WishlistContextType | undefined>(undefined);
 
+// Safe fallback returned when the hook is used outside a WishlistProvider, so a
+// missing provider degrades gracefully (empty wishlist) instead of crashing.
+const fallbackWishlist: WishlistContextType = {
+  wishlist: null,
+  isLoading: false,
+  error: null,
+  addItem: async () => {},
+  removeItem: async () => {},
+  toggleItem: async () => {},
+  moveItemToCart: async () => {},
+  isItemInWishlist: () => false,
+  getItemCount: () => 0,
+  refetch: () => {},
+};
+
 export const useWishlist = () => {
   const context = useContext(WishlistContext);
   if (!context) {
-    throw new Error('useWishlist must be used within a WishlistProvider');
+    console.warn('useWishlist used outside a WishlistProvider; returning safe defaults.');
+    return fallbackWishlist;
   }
   return context;
 };

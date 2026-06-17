@@ -59,3 +59,7 @@ const ResponsiveBreadcrumb = ({ items, className }: ResponsiveBreadcrumbProps) =
 };
 
 export default ResponsiveBreadcrumb;
+
+// Also exported as a named export so either import style resolves
+// (`import ResponsiveBreadcrumb from ...` or `import { ResponsiveBreadcrumb } from ...`).
+export { ResponsiveBreadcrumb };

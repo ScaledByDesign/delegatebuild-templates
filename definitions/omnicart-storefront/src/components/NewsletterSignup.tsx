@@ -57,3 +57,7 @@ const NewsletterSignup = () => {
 };
 
 export default NewsletterSignup;
+
+// Also exported as a named export so either import style resolves
+// (`import NewsletterSignup from ...` or `import { NewsletterSignup } from ...`).
+export { NewsletterSignup };

@@ -59,3 +59,7 @@ const ContestWinners = () => {
 };
 
 export default ContestWinners;
+
+// Also exported as a named export so either import style resolves
+// (`import ContestWinners from ...` or `import { ContestWinners } from ...`).
+export { ContestWinners };

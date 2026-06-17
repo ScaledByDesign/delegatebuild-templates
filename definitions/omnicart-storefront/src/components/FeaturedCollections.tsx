@@ -166,3 +166,7 @@ const CollectionCard: React.FC<CollectionCardProps> = ({ collection }) => {
 };
 
 export default FeaturedCollections;
+
+// Also exported as a named export so either import style resolves
+// (`import FeaturedCollections from ...` or `import { FeaturedCollections } from ...`).
+export { FeaturedCollections };

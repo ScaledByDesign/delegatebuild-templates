@@ -46,3 +46,12 @@ Checkout page integrates PCI-compliant card fields using `@stripe/stripe-js` and
 To maintain storefront stability and ensure production-grade checkout, the core ecommerce plumbing is strictly protected and read-only.
 - **Do not attempt to rewrite or modify** `src/components/product/ProductMediaGallery.tsx`, `src/pages/ProductDetail.tsx`, `src/pages/ExpressCheckout.tsx`, or any files under `src/lib/`, `src/hooks/`, or `src/context/`.
 - Focus your modifications on user-facing storefront customisations, such as rewriting the homepage (`src/pages/Index.tsx`), adding marketing sections, adjusting styles, or adding custom landing pages.
+
+## Imports, Exports, and Provider Wiring (Do Not Break)
+
+These conventions keep the app booting. Violating them is the most common cause of a blank screen or a runtime `does not provide an export named ...` / `must be used within a Provider` crash.
+
+- **Do not change the provider nesting in `src/App.tsx`.** The context providers (`RegionProvider`, `CartProvider`, `CartSummaryProvider`, `CustomerProvider`, `WishlistProvider`, etc.) are intentionally ordered so child providers can read their parents. Add routes and pages inside the existing tree; never reorder, remove, or hoist a provider out of it.
+- **Do not change a component's export style.** Existing components export **both** a default and a matching named export, so either `import Foo from "@/components/Foo"` or `import { Foo } from "@/components/Foo"` works. When you create a new component, follow the same convention: `export default Foo;` **and** `export { Foo };`. Do not convert a default export to named-only (or vice versa) on an existing file.
+- **Use the context hooks (`useCart`, `useCustomer`, `useRegion`, `useWishlist`, `useCartSummary`) only via their exported hook** — never read the raw context. They return safe defaults outside a provider, so do not add your own `throw` guards.
+- **Do not `bun add` / `npm install` commerce SDKs.** `@medusajs/js-sdk`, Stripe, Supabase, and React Query are already declared. Never install `@medusajs/medusa-js` (deprecated v1 — incompatible and the guessed version does not exist).
