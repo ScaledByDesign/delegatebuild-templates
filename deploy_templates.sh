@@ -116,7 +116,7 @@ upload_to_r2() {
   local description="$3"
   
   echo "Uploading: $description"
-  if npx wrangler r2 object put "${R2_BUCKET_NAME}/$r2_key" --file="$file_path" $R2_FLAGS; then
+  if npx wrangler r2 object put "${R2_BUCKET_NAME}/$r2_key" --file="$file_path" --cache-control="no-cache, no-store, must-revalidate" $R2_FLAGS; then
     echo "✅ Successfully uploaded $description"
     return 0
   else
