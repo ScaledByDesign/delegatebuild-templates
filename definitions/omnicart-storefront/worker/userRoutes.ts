@@ -113,7 +113,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ error: 'Stripe is not configured' }, 500);
     }
 
-    const medusaUrl = env.OMNICART_BACKEND_URL || 'https://demo.omnicart.commerce';
+    const medusaUrl = env.OMNICART_BACKEND_URL || '';
     const publishableKey = env.OMNICART_PUBLISHABLE_KEY || '';
 
     try {
