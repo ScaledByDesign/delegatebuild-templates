@@ -66,18 +66,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicar
   hydrateEnv(env)
 
   const shopifyDomain = ensure(env.SHOPIFY_STORE_DOMAIN, "SHOPIFY_STORE_DOMAIN")
-  // OmniCart is the canonical brand; OMNICART_* names win, MEDUSA_* are
-  // accepted as a back-compat fallback for older deploys.
   const medusaAdminUrl = ensure(
-    env.OMNICART_ADMIN_URL ?? env.MEDUSA_ADMIN_URL,
-    "OMNICART_ADMIN_URL",
+    env.OMNICART_ADMIN_URL, "OMNICART_ADMIN_URL"
   )
   const medusaAdminToken = ensure(
-    env.OMNICART_ADMIN_TOKEN ?? env.MEDUSA_ADMIN_TOKEN,
-    "OMNICART_ADMIN_TOKEN",
+    env.OMNICART_ADMIN_TOKEN, "OMNICART_ADMIN_TOKEN"
   )
   const medusaDefaultRegionId = ensure(
-    env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID ?? env.MEDUSA_DEFAULT_REGION_ID,
+    env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID,
     "OMNICART_REGION_ID",
   )
 
@@ -88,8 +84,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicar
     throw new Error("SHOPIFY_ACCESS_TOKEN is required when SHOPIFY_DATA_SOURCE=admin-api")
   }
 
-  const timeoutMs = env.SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS
-    ? Number.parseInt(env.SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS, 10)
+  // OmniCart is canonical; the legacy SHOPIFY_MEDUSA_* name is read as a
+  // back-compat fallback for older deploys.
+  const timeoutOverride =
+    env.SHOPIFY_OMNICART_REQUEST_TIMEOUT_MS ?? env.SHOPIFY_MEDUSA_REQUEST_TIMEOUT_MS
+  const timeoutMs = timeoutOverride
+    ? Number.parseInt(timeoutOverride, 10)
     : DEFAULT_TIMEOUT
 
   return {
@@ -99,14 +99,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicar
     medusaAdminToken,
     medusaDefaultRegionId,
     medusaDefaultCollectionFallback:
-      env.OMNICART_COLLECTION_FALLBACK ?? env.MEDUSA_DEFAULT_COLLECTION_FALLBACK,
+      env.OMNICART_COLLECTION_FALLBACK,
     medusaInventoryLocationId:
-      env.OMNICART_INVENTORY_LOCATION_ID ?? env.MEDUSA_INVENTORY_LOCATION_ID,
+      env.OMNICART_INVENTORY_LOCATION_ID,
     medusaSalesChannelId:
-      env.OMNICART_SALES_CHANNEL_ID ?? env.MEDUSA_SALES_CHANNEL_ID,
+      env.OMNICART_SALES_CHANNEL_ID,
     requestTimeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT,
     dataSource: requestedSource,
     collectionHandle: env.SHOPIFY_COLLECTION_HANDLE || "all",
-    medusaSalesChannelName: env.OMNICART_SALES_CHANNEL_NAME ?? env.MEDUSA_SALES_CHANNEL_NAME,
+    medusaSalesChannelName: env.OMNICART_SALES_CHANNEL_NAME,
   }
 }

@@ -78,12 +78,12 @@ export const OMNICART_PUBLISHABLE_KEY: string =
 
 /** Default sales channel id for the storefront (empty unless configured). */
 export const OMNICART_SALES_CHANNEL_ID: string =
-  readEnv("VITE_OMNICART_SALES_CHANNEL_ID", "OMNICART_SALES_CHANNEL_ID", "MEDUSA_SALES_CHANNEL_ID") || "";
+  readEnv("VITE_OMNICART_SALES_CHANNEL_ID", "OMNICART_SALES_CHANNEL_ID") || "";
 
 /** Default region id (empty unless configured). */
 export const OMNICART_REGION_ID: string =
-  readEnv("VITE_OMNICART_REGION_ID", "OMNICART_REGION_ID", "MEDUSA_DEFAULT_REGION_ID") || "";
+  readEnv("VITE_OMNICART_REGION_ID", "OMNICART_REGION_ID") || "";
 
 /** Default inventory/stock location id (empty unless configured). */
 export const OMNICART_INVENTORY_LOCATION_ID: string =
-  readEnv("VITE_OMNICART_INVENTORY_LOCATION_ID", "OMNICART_INVENTORY_LOCATION_ID", "MEDUSA_INVENTORY_LOCATION_ID") || "";
+  readEnv("VITE_OMNICART_INVENTORY_LOCATION_ID", "OMNICART_INVENTORY_LOCATION_ID") || "";

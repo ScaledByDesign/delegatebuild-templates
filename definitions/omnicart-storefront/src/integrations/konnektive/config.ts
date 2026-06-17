@@ -78,25 +78,25 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveOmni
   const konnektiveApiUrl = ensure(env.KONNEKTIVE_API_URL, "KONNEKTIVE_API_URL")
   const konnektiveLoginId = ensure(env.KONNEKTIVE_LOGIN_ID, "KONNEKTIVE_LOGIN_ID")
   const konnektivePassword = ensure(env.KONNEKTIVE_PASSWORD, "KONNEKTIVE_PASSWORD")
-  // OmniCart is the canonical brand; OMNICART_* names win, MEDUSA_* are
-  // accepted as a back-compat fallback for older deploys.
   const medusaAdminUrl = ensure(
-    env.OMNICART_ADMIN_URL ?? env.MEDUSA_ADMIN_URL,
-    "OMNICART_ADMIN_URL",
+    env.OMNICART_ADMIN_URL, "OMNICART_ADMIN_URL"
   )
   const medusaAdminToken = ensure(
-    env.OMNICART_ADMIN_TOKEN ?? env.MEDUSA_ADMIN_TOKEN,
-    "OMNICART_ADMIN_TOKEN",
+    env.OMNICART_ADMIN_TOKEN, "OMNICART_ADMIN_TOKEN"
   )
   const medusaDefaultRegionId = ensure(
-    env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID ?? env.MEDUSA_DEFAULT_REGION_ID,
+    env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID,
     "OMNICART_REGION_ID",
   )
 
   const requestedSource = (env.KONNEKTIVE_DATA_SOURCE as KonnektiveDataSource | undefined) ?? "api"
 
-  const timeoutMs = env.KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS
-    ? Number.parseInt(env.KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS, 10)
+  // OmniCart is canonical; the legacy KONNEKTIVE_MEDUSA_* name is read as a
+  // back-compat fallback for older deploys.
+  const timeoutOverride =
+    env.KONNEKTIVE_OMNICART_REQUEST_TIMEOUT_MS ?? env.KONNEKTIVE_MEDUSA_REQUEST_TIMEOUT_MS
+  const timeoutMs = timeoutOverride
+    ? Number.parseInt(timeoutOverride, 10)
     : DEFAULT_TIMEOUT
 
   const batchSize = env.KONNEKTIVE_BATCH_SIZE
@@ -122,14 +122,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveOmni
     medusaAdminToken,
     medusaDefaultRegionId,
     medusaDefaultCollectionFallback:
-      env.OMNICART_COLLECTION_FALLBACK ?? env.MEDUSA_DEFAULT_COLLECTION_FALLBACK,
+      env.OMNICART_COLLECTION_FALLBACK,
     medusaInventoryLocationId:
-      env.OMNICART_INVENTORY_LOCATION_ID ?? env.MEDUSA_INVENTORY_LOCATION_ID,
+      env.OMNICART_INVENTORY_LOCATION_ID,
     medusaSalesChannelId:
-      env.OMNICART_SALES_CHANNEL_ID ?? env.MEDUSA_SALES_CHANNEL_ID,
+      env.OMNICART_SALES_CHANNEL_ID,
     requestTimeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT,
     dataSource: requestedSource,
-    medusaSalesChannelName: env.OMNICART_SALES_CHANNEL_NAME ?? env.MEDUSA_SALES_CHANNEL_NAME,
+    medusaSalesChannelName: env.OMNICART_SALES_CHANNEL_NAME,
     enableWebhooks: env.KONNEKTIVE_ENABLE_WEBHOOKS === "true",
     webhookSecret: env.KONNEKTIVE_WEBHOOK_SECRET,
     syncMode,
