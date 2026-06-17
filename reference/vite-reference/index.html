@@ -5,6 +5,11 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Vite + React + TS</title>
+    <!-- Browser-safe connector env, published by the host at deploy. Loads before
+         the app bundle so window.__PUBLIC_ENV__ is available synchronously to
+         credential readers (Supabase/Stripe/etc.). A no-op default ships in
+         public/ so this never 404s; the host overwrites it with real values. -->
+    <script src="/__public_env.js"></script>
   </head>
   <body>
     <div id="root"></div>
