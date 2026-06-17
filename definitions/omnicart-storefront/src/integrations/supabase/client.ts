@@ -1,8 +1,30 @@
 // Supabase client configuration
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// Resolve config from the RUNTIME window globals first (the platform injects
+// `window.VITE_*` at deploy, which is how credentials arrive when a workspace is
+// linked AFTER the app was built — build-time `import.meta.env` would be empty in
+// that case), then fall back to build-time env vars. Accept the common key-name
+// variants so whichever the platform injects (`SUPABASE_ANON_KEY` →
+// `VITE_SUPABASE_ANON_KEY`, or `…PUBLISHABLE_KEY`) is picked up.
+const readEnv = (...keys: string[]): string | undefined => {
+  for (const k of keys) {
+    if (typeof window !== 'undefined') {
+      const w = (window as unknown as Record<string, unknown>)[k];
+      if (typeof w === 'string' && w) return w;
+    }
+    const v = (import.meta.env as Record<string, string | undefined>)[k];
+    if (v) return v;
+  }
+  return undefined;
+};
+
+const SUPABASE_URL = readEnv('VITE_SUPABASE_URL', 'VITE_SUPABASE_PROJECT_URL');
+const SUPABASE_PUBLISHABLE_KEY = readEnv(
+  'VITE_SUPABASE_ANON_KEY',
+  'VITE_SUPABASE_PUBLISHABLE_KEY',
+  'VITE_SUPABASE_KEY',
+);
 
 // Validate environment variables
 if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {

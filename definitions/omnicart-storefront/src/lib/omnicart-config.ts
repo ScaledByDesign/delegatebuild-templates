@@ -13,9 +13,18 @@
 
 const isBrowser = typeof window !== "undefined";
 
-/** Read an env var in both the browser (import.meta.env) and Node (process.env). */
+/**
+ * Read an env var, preferring RUNTIME `window` globals injected by the platform
+ * at deploy (this is how credentials arrive when a workspace is linked AFTER the
+ * app was built — build-time `import.meta.env` would be empty in that case), then
+ * falling back to build-time `import.meta.env` (browser) and `process.env` (Node).
+ */
 function readEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
+    if (typeof window !== "undefined") {
+      const w = (window as unknown as Record<string, unknown>)[key];
+      if (typeof w === "string" && w) return w;
+    }
     if (typeof import.meta !== "undefined" && import.meta.env) {
       const v = (import.meta.env as Record<string, string | undefined>)[key];
       if (v) return v;

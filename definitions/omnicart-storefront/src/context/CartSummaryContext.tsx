@@ -24,7 +24,16 @@ interface CartSummaryContextType {
   closeSummary: () => void;
 }
 
-const CartSummaryContext = createContext<CartSummaryContextType | undefined>(undefined);
+// Default to a safe no-op implementation so consumers (e.g. CartProvider) never
+// crash when a CartSummaryProvider ancestor is missing — for example if a
+// generated app reorders the providers. Without the provider the popover simply
+// never opens, instead of white-screening the whole app.
+const CartSummaryContext = createContext<CartSummaryContextType>({
+  isOpen: false,
+  data: null,
+  openSummary: () => {},
+  closeSummary: () => {},
+});
 
 export const CartSummaryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -60,10 +69,4 @@ export const CartSummaryProvider: React.FC<{ children: React.ReactNode }> = ({ c
   );
 };
 
-export const useCartSummary = () => {
-  const context = useContext(CartSummaryContext);
-  if (context === undefined) {
-    throw new Error('useCartSummary must be used within CartSummaryProvider');
-  }
-  return context;
-};
+export const useCartSummary = () => useContext(CartSummaryContext);
