@@ -5,6 +5,7 @@ import { Env } from './core-utils';
 interface OmniCartEnv extends Env {
   OMNICART_BACKEND_URL?: string;
   OMNICART_PUBLISHABLE_KEY?: string;
+  OMNICART_SALES_CHANNEL_ID?: string;
   RESEND_API_KEY?: string;
   STRIPE_SECRET_KEY?: string;
 }
@@ -242,10 +243,38 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     }
 
     const method = c.req.method;
+
+    // Cart creation needs a sales_channel_id when the publishable key maps to
+    // multiple sales channels, otherwise Medusa rejects it with a 400. Inject
+    // the configured channel server-side (when the client omitted it) so carts
+    // work regardless of how the storefront builds the request body.
+    let outboundBody: BodyInit | null | undefined;
+    if (['GET', 'HEAD'].includes(method)) {
+      outboundBody = undefined;
+    } else if (
+      method === 'POST' &&
+      targetPath === '/store/carts' &&
+      env.OMNICART_SALES_CHANNEL_ID
+    ) {
+      let parsed: Record<string, unknown> = {};
+      try {
+        parsed = await c.req.json();
+      } catch {
+        parsed = {};
+      }
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.sales_channel_id == null) {
+        parsed.sales_channel_id = env.OMNICART_SALES_CHANNEL_ID;
+      }
+      outboundBody = JSON.stringify(parsed);
+      headers.set('content-type', 'application/json');
+    } else {
+      outboundBody = c.req.raw.body;
+    }
+
     const init: RequestInit = {
       method,
       headers,
-      body: ['GET', 'HEAD'].includes(method) ? undefined : c.req.raw.body,
+      body: outboundBody,
     };
 
     try {
