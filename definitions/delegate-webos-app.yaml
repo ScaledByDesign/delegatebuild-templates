@@ -1,0 +1,9 @@
+name: "delegate-webos-app"
+description: "Internal Delegate WebOS-native app. React/Vite app that mirrors the Delegate WebOS design system (theme tokens, font scale, _shared primitives, scroll container) and is publishable as an iframe plugin inside the Delegate desktop. Receives live theme tokens from the Delegate host and falls back to the browser's prefers-color-scheme when run standalone."
+base_reference: "vite-reference"
+projectType: app
+
+# Patch package.json so the generated app carries the right name. All runtime
+# deps already ship in vite-reference (React, Tailwind, lucide, TanStack, Hono).
+package_patches:
+  name: "delegate-webos-app"
