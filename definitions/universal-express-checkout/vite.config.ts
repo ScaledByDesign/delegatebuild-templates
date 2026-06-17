@@ -158,6 +158,9 @@ export default ({ mode }: { mode: string }) => {
     },
     server: {
       allowedHosts: true,
+      warmup: {
+        clientFiles: ["./index.html", "./src/main.tsx"],
+      },
       watch: {
         awaitWriteFinish: {
           stabilityThreshold: 150,
@@ -174,7 +177,7 @@ export default ({ mode }: { mode: string }) => {
       },
     },
     optimizeDeps: {
-      include: ["react", "react-dom", "react-router-dom"],
+      include: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime", "react-router-dom"],
       exclude: ["agents"],
       // Use Vite's cached optimized deps. Forcing a re-bundle on every dev
       // start made the sandbox re-optimize under slow disk IO, which 504'd
