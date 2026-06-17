@@ -21,7 +21,7 @@ import {
   restoreCartFromSavedState
 } from "@/lib/utils/cartPersistence";
 import { removeCartId } from "@/lib/util/cookies";
-import { clearOrderRecoveryData } from "@/lib/checkout/orderRecovery";
+import { clearOrderRecoveryData } from "@/lib/checkout/orderRecoveryStorage";
 import { trackAddToCart } from "@/hooks/useTracking";
 
 export interface CartItem {
