@@ -66,9 +66,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyMedusaC
   hydrateEnv(env)
 
   const shopifyDomain = ensure(env.SHOPIFY_STORE_DOMAIN, "SHOPIFY_STORE_DOMAIN")
-  const medusaAdminUrl = ensure(env.MEDUSA_ADMIN_URL, "MEDUSA_ADMIN_URL")
-  const medusaAdminToken = ensure(env.MEDUSA_ADMIN_TOKEN, "MEDUSA_ADMIN_TOKEN")
-  const medusaDefaultRegionId = ensure(env.MEDUSA_DEFAULT_REGION_ID, "MEDUSA_DEFAULT_REGION_ID")
+  // OmniCart is the canonical brand; OMNICART_* names win, MEDUSA_* are
+  // accepted as a back-compat fallback for older deploys.
+  const medusaAdminUrl = ensure(
+    env.OMNICART_ADMIN_URL ?? env.MEDUSA_ADMIN_URL,
+    "OMNICART_ADMIN_URL",
+  )
+  const medusaAdminToken = ensure(
+    env.OMNICART_ADMIN_TOKEN ?? env.MEDUSA_ADMIN_TOKEN,
+    "OMNICART_ADMIN_TOKEN",
+  )
+  const medusaDefaultRegionId = ensure(
+    env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID ?? env.MEDUSA_DEFAULT_REGION_ID,
+    "OMNICART_REGION_ID",
+  )
 
   const requestedSource = (env.SHOPIFY_DATA_SOURCE as ShopifyDataSource | undefined) ??
     (env.SHOPIFY_ACCESS_TOKEN ? "admin-api" : "public-json")
@@ -87,12 +98,15 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyMedusaC
     medusaAdminUrl: medusaAdminUrl.replace(/\/$/, ""),
     medusaAdminToken,
     medusaDefaultRegionId,
-    medusaDefaultCollectionFallback: env.MEDUSA_DEFAULT_COLLECTION_FALLBACK,
-    medusaInventoryLocationId: env.MEDUSA_INVENTORY_LOCATION_ID,
-    medusaSalesChannelId: env.MEDUSA_SALES_CHANNEL_ID,
+    medusaDefaultCollectionFallback:
+      env.OMNICART_COLLECTION_FALLBACK ?? env.MEDUSA_DEFAULT_COLLECTION_FALLBACK,
+    medusaInventoryLocationId:
+      env.OMNICART_INVENTORY_LOCATION_ID ?? env.MEDUSA_INVENTORY_LOCATION_ID,
+    medusaSalesChannelId:
+      env.OMNICART_SALES_CHANNEL_ID ?? env.MEDUSA_SALES_CHANNEL_ID,
     requestTimeoutMs: Number.isFinite(timeoutMs) ? timeoutMs : DEFAULT_TIMEOUT,
     dataSource: requestedSource,
     collectionHandle: env.SHOPIFY_COLLECTION_HANDLE || "all",
-    medusaSalesChannelName: env.MEDUSA_SALES_CHANNEL_NAME,
+    medusaSalesChannelName: env.OMNICART_SALES_CHANNEL_NAME ?? env.MEDUSA_SALES_CHANNEL_NAME,
   }
 }
