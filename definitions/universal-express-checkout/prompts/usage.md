@@ -269,6 +269,18 @@ By default the storefront reaches OmniCart through the same-origin Worker proxy 
 
 Leave both unset to use the default same-origin proxy + `OMNICART_BACKEND_URL` (with the built-in demo fallback).
 
+# Rebranding Must Keep the App Buildable
+
+A single broken file fails `vite build`, and the whole preview then returns a blank 500 — not just the page you changed. To customize safely:
+- **Prefer tokens over rewrites.** Do branding through `tailwind.config.js` (colors, fonts), global CSS, and swapping logo/image assets — this restyles the whole checkout without touching logic.
+- **Every file you output must be complete and compile.** Resolve all imports, never reference a component/hook/export that does not exist, and keep imports a file still uses. No half-written files.
+- **Do not add new dependencies.** Use only packages already in `package.json` (a missing dependency breaks the deploy build).
+- **Do not change a component's export style** (default vs named) on an existing file; when you create a component, export it the same way the others do.
+
+# Same-Origin Proxy Mandate
+
+Browser requests go to the **same-origin Worker proxy** (`/api/checkout/:kind/*`, `/api/omnicart/*`, `/api/upsell/*`), which forwards them server-side and injects credentials. This is mandatory: the processor / OmniCart backends do not send CORS headers, so calling them directly from the browser is blocked. **Do not** set `VITE_OMNICART_BACKEND_URL` to a cross-origin `https://...` URL or call a backend host directly from client code — `src/lib/omnicart.ts` already collapses any cross-origin value back to the same-origin proxy. Processor / upsell backend URLs and secret keys are **server-side Worker config**, never browser values.
+
 # Important Notes
 
 * The route flow `/c/:code` (cart -> shipping -> payment on-page sections) -> `/upsell/:sessionId` (one offer per route) -> `/success` (receipt) is the core of this template. Build your storefront around these routes rather than replacing them or collapsing them back into a single page.

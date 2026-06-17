@@ -24,27 +24,72 @@
 import Medusa, { FetchError } from "@medusajs/js-sdk";
 import type { HttpTypes } from "@medusajs/types";
 
-// Optional ABSOLUTE backend URL. When set, the SDK connects DIRECTLY to this
-// Medusa backend (self-hosted or Medusa Cloud); otherwise it routes through the
-// same-origin Worker proxy. Medusa publishable keys are browser-safe by design.
-const OVERRIDE_BACKEND_URL = import.meta.env?.VITE_OMNICART_BACKEND_URL || "";
-const PUBLISHABLE_KEY = import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY || "";
-/** True when using the same-origin Worker proxy (no absolute override set). */
-const PROXY_MODE = !OVERRIDE_BACKEND_URL;
+// Resolve config from the RUNTIME window globals first (the platform injects
+// `window.VITE_*` at deploy, which is how credentials arrive when a workspace is
+// linked AFTER the app was built — build-time `import.meta.env` would be empty in
+// that case), then fall back to build-time `import.meta.env` / `process.env`.
+function readEnv(...keys: string[]): string {
+  for (const key of keys) {
+    if (typeof window !== "undefined") {
+      const w = (window as unknown as Record<string, unknown>)[key];
+      if (typeof w === "string" && w) return w;
+    }
+    if (typeof import.meta !== "undefined" && import.meta.env) {
+      const v = (import.meta.env as Record<string, string | undefined>)[key];
+      if (v) return v;
+    }
+    if (typeof process !== "undefined" && process.env && process.env[key]) {
+      return process.env[key] as string;
+    }
+  }
+  return "";
+}
+
+const CONFIGURED_BACKEND_URL = readEnv("VITE_OMNICART_BACKEND_URL", "OMNICART_BACKEND_URL");
+const PUBLISHABLE_KEY = readEnv("VITE_OMNICART_PUBLISHABLE_KEY", "OMNICART_PUBLISHABLE_KEY");
+
+/**
+ * Resolve the SDK baseUrl for the browser. A CROSS-ORIGIN absolute URL cannot be
+ * called directly from the browser unless the Medusa backend's `store_cors` allows
+ * this origin; to avoid hard CORS failures by default, any cross-origin value is
+ * collapsed back to the same-origin Worker proxy (`/api/omnicart`). Same-origin /
+ * relative values are honored as-is.
+ */
+function resolveBaseUrl(): string {
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const proxy = `${origin}/api/omnicart`;
+  const configured = CONFIGURED_BACKEND_URL;
+  if (!configured) return proxy;
+  if (configured.startsWith("/")) return `${origin}${configured.replace(/\/$/, "")}`;
+  try {
+    const parsed = new URL(configured, origin);
+    if (parsed.origin === origin) return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return proxy;
+  }
+  if (typeof console !== "undefined") {
+    console.warn(
+      "OmniCart: cross-origin VITE_OMNICART_BACKEND_URL collapsed to the same-origin proxy (/api/omnicart) to avoid CORS. Configure the backend on the Worker (OMNICART_BACKEND_URL) for direct connections.",
+    );
+  }
+  return proxy;
+}
+
+const RESOLVED_BASE_URL = resolveBaseUrl();
+/** True when using the same-origin Worker proxy (no honored absolute override). */
+const PROXY_MODE = RESOLVED_BASE_URL.endsWith("/api/omnicart");
 
 let sdkInstance: Medusa | null = null;
 
 /**
  * Lazily build the Medusa SDK client. The SDK requires an ABSOLUTE baseUrl but
  * preserves a path prefix, so `${origin}/api/omnicart` routes cleanly through the
- * Worker proxy while an absolute override connects straight to the backend.
+ * Worker proxy while an honored absolute override connects straight to the backend.
  */
 function client(): Medusa {
   if (sdkInstance) return sdkInstance;
-  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
-  const baseUrl = OVERRIDE_BACKEND_URL || `${origin}/api/omnicart`;
   sdkInstance = new Medusa({
-    baseUrl,
+    baseUrl: RESOLVED_BASE_URL,
     // In proxy mode the Worker injects the publishable key server-side; in
     // override mode the SDK sends the (browser-safe) key itself.
     ...(PUBLISHABLE_KEY ? { publishableKey: PUBLISHABLE_KEY } : {}),

@@ -1,0 +1,22 @@
+[
+  "package.json",
+  "tsconfig.json",
+  "tsconfig.app.json",
+  "tsconfig.node.json",
+  "vite.config.ts",
+  "wrangler.jsonc",
+  "tailwind.config.js",
+  "src/main.tsx",
+  "src/lib/omnicart.ts",
+  "src/lib/checkout/",
+  "src/lib/checkout-session-store.ts",
+  "src/lib/upsell-flow.ts",
+  "src/pages/CheckoutPage.tsx",
+  "src/pages/SuccessPage.tsx",
+  "src/pages/UpsellOfferPage.tsx",
+  "src/components/checkout/",
+  "worker/",
+  ".donttouch_files.json",
+  ".important_files.json",
+  ".redacted_files.json"
+]

@@ -75,6 +75,94 @@ const KNOWN_PROCESSOR_KINDS = new Set([
   "stickyio",
 ]);
 
+type ProxyCtx = {
+  req: {
+    url: string;
+    method: string;
+    raw: Request;
+    header: (name: string) => string | undefined;
+  };
+};
+
+/** Normalize a backend base URL: trim, ensure an https:// scheme, drop trailing slash. */
+function normalizeBackend(raw: string | undefined): string {
+  let backend = (raw || '').trim();
+  if (backend && !/^https?:\/\//i.test(backend)) {
+    backend = `https://${backend}`;
+  }
+  return backend.replace(/\/$/, '');
+}
+
+function proxyError(label: string, message: string, detail?: string, status = 502): Response {
+  return new Response(
+    JSON.stringify({ success: false, error: message, ...(detail ? { detail } : {}) }),
+    { status, headers: { 'content-type': 'application/json' } },
+  );
+}
+
+/**
+ * Hardened reverse proxy. Validates + normalizes the target, guards against a
+ * self-referential backend (which Cloudflare surfaces as an opaque "internal
+ * error"), forwards only a minimal header allowlist (never the full inbound set,
+ * which leaks client/cf-* headers and can break the upstream), passes set-cookie
+ * through, and on failure surfaces the backend host while logging the full target
+ * server-side. extraHeaders (e.g. the publishable key or a service token) are
+ * applied last so they win over any inbound value.
+ */
+async function proxyTo(
+  c: ProxyCtx,
+  target: string,
+  label: string,
+  extraHeaders?: Record<string, string>,
+): Promise<Response> {
+  const reqUrl = new URL(c.req.url);
+  let targetUrl: URL;
+  try {
+    targetUrl = new URL(target);
+  } catch {
+    console.error(`[${label}] invalid backend URL: "${target}"`);
+    return proxyError(label, `${label} misconfigured: backend URL is not valid.`);
+  }
+  if (targetUrl.host === reqUrl.host) {
+    console.error(`[${label}] backend loops back at app host "${reqUrl.host}"; fix the backend URL`);
+    return proxyError(
+      label,
+      `${label} misconfigured: backend points back at this app (${reqUrl.host}). Set it to the processor backend URL.`,
+    );
+  }
+
+  const headers = new Headers();
+  headers.set('accept', 'application/json');
+  const contentType = c.req.header('content-type');
+  if (contentType) headers.set('content-type', contentType);
+  const cookie = c.req.header('cookie');
+  if (cookie) headers.set('cookie', cookie);
+  const authorization = c.req.header('authorization');
+  if (authorization) headers.set('authorization', authorization);
+  for (const [k, v] of Object.entries(extraHeaders ?? {})) headers.set(k, v);
+
+  const method = c.req.method;
+  const init: RequestInit = {
+    method,
+    headers,
+    body: ['GET', 'HEAD'].includes(method) ? undefined : c.req.raw.body,
+  };
+
+  try {
+    const upstream = await fetch(targetUrl.toString(), init);
+    const resBody = await upstream.arrayBuffer();
+    const resHeaders = new Headers();
+    resHeaders.set('content-type', upstream.headers.get('content-type') || 'application/json');
+    const setCookie = upstream.headers.get('set-cookie');
+    if (setCookie) resHeaders.append('set-cookie', setCookie);
+    return new Response(resBody, { status: upstream.status, headers: resHeaders });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'unknown';
+    console.error(`[${label}] ${method} ${targetUrl.toString()} failed: ${detail}`);
+    return proxyError(label, `${label} unreachable (${targetUrl.host})`, detail);
+  }
+}
+
 // --- Flow Builder upstream shapes (CORE camelCase) --------------------------
 // The platform returns camelCase session/button payloads; we map them to the
 // storefront's snake_case FlowSession/FlowNode contract before responding.
@@ -149,7 +237,7 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       return c.json({ success: false, error: `Unknown processor: ${kind}` }, 404);
     }
 
-    const backend = processorBackend(env, kind);
+    const backend = normalizeBackend(processorBackend(env, kind));
     if (!backend) {
       // No backend wired for this processor -> demo mode.
       return c.json(
@@ -163,39 +251,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       '',
     );
     const url = new URL(c.req.url);
-    const target = `${backend.replace(/\/$/, '')}/checkout${upstreamPath}${url.search}`;
-
-    const headers = new Headers(c.req.raw.headers);
-    headers.delete('host');
-    headers.set('accept', 'application/json');
-    if (kind === 'omnicart' && env.OMNICART_PUBLISHABLE_KEY) {
-      headers.set('x-publishable-api-key', env.OMNICART_PUBLISHABLE_KEY);
-    }
-
-    const init: RequestInit = {
-      method: c.req.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
-    };
-
-    try {
-      const upstream = await fetch(target, init);
-      const resBody = await upstream.arrayBuffer();
-      return new Response(resBody, {
-        status: upstream.status,
-        headers: {
-          'content-type': upstream.headers.get('content-type') || 'application/json',
-        },
-      });
-    } catch (err) {
-      return c.json(
-        {
-          success: false,
-          error: `${kind} backend unreachable: ${err instanceof Error ? err.message : 'unknown'}`,
-        },
-        502,
-      );
-    }
+    const target = `${backend}/checkout${upstreamPath}${url.search}`;
+    const extra = kind === 'omnicart' && env.OMNICART_PUBLISHABLE_KEY
+      ? { 'x-publishable-api-key': env.OMNICART_PUBLISHABLE_KEY }
+      : undefined;
+    return proxyTo(c, target, `${kind} checkout`, extra);
   });
 
   // --- OmniCart demo-mode guard ---------------------------------------------
@@ -236,37 +296,18 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // The publishable key is attached here so it never ships to the browser.
   app.all('/api/omnicart/*', async (c) => {
     const env = c.env as OmniCartEnv;
-    const backend = env.OMNICART_BACKEND_URL || 'https://demo.omnicart.commerce';
+    const backend = normalizeBackend(env.OMNICART_BACKEND_URL);
+    if (!backend) {
+      return c.json({ success: false, error: 'OmniCart backend not configured', demo: true }, 503);
+    }
     const upstreamPath = c.req.path.replace(/^\/api\/omnicart/, '');
     const targetPath = upstreamPath.startsWith('/store') ? upstreamPath : `/store${upstreamPath}`;
     const url = new URL(c.req.url);
-    const target = `${backend.replace(/\/$/, '')}${targetPath}${url.search}`;
-
-    const headers = new Headers(c.req.raw.headers);
-    headers.delete('host');
-    if (env.OMNICART_PUBLISHABLE_KEY) {
-      headers.set('x-publishable-api-key', env.OMNICART_PUBLISHABLE_KEY);
-    }
-
-    const init: RequestInit = {
-      method: c.req.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
-    };
-
-    try {
-      const upstream = await fetch(target, init);
-      const resBody = await upstream.arrayBuffer();
-      return new Response(resBody, {
-        status: upstream.status,
-        headers: { 'content-type': upstream.headers.get('content-type') || 'application/json' },
-      });
-    } catch (err) {
-      return c.json(
-        { success: false, error: `OmniCart backend unreachable: ${err instanceof Error ? err.message : 'unknown'}` },
-        502,
-      );
-    }
+    const target = `${backend}${targetPath}${url.search}`;
+    const extra = env.OMNICART_PUBLISHABLE_KEY
+      ? { 'x-publishable-api-key': env.OMNICART_PUBLISHABLE_KEY }
+      : undefined;
+    return proxyTo(c, target, 'OmniCart', extra);
   });
 
   // --- OmniCart Flow Builder upsell runtime ---------------------------------
@@ -286,43 +327,16 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
   };
 
   const forwardUpsell = async (
-    c: { env: Env; req: { url: string; method: string; raw: Request } },
+    c: ProxyCtx & { env: Env },
     upstreamPath: string,
   ): Promise<Response> => {
     const { base, token } = upsellRuntime(c);
     if (!base) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Upsell runtime not configured' }),
-        { status: 503, headers: { 'content-type': 'application/json' } },
-      );
+      return proxyError('Upsell runtime', 'Upsell runtime not configured', undefined, 503);
     }
     const url = new URL(c.req.url);
-    const target = `${base}${upstreamPath}${url.search}`;
-    const headers = new Headers(c.req.raw.headers);
-    headers.delete('host');
-    headers.set('accept', 'application/json');
-    if (token) headers.set('authorization', `Bearer ${token}`);
-    const init: RequestInit = {
-      method: c.req.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
-    };
-    try {
-      const upstream = await fetch(target, init);
-      const resBody = await upstream.arrayBuffer();
-      return new Response(resBody, {
-        status: upstream.status,
-        headers: { 'content-type': upstream.headers.get('content-type') || 'application/json' },
-      });
-    } catch (err) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Upsell runtime unreachable: ${err instanceof Error ? err.message : 'unknown'}`,
-        }),
-        { status: 502, headers: { 'content-type': 'application/json' } },
-      );
-    }
+    const target = `${normalizeBackend(base)}${upstreamPath}${url.search}`;
+    return proxyTo(c, target, 'Upsell runtime', token ? { authorization: `Bearer ${token}` } : undefined);
   };
 
   app.post('/api/upsell/session', async (c) => {
