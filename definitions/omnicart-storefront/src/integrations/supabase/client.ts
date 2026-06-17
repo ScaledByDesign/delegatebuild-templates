@@ -19,11 +19,21 @@ const readEnv = (...keys: string[]): string | undefined => {
   return undefined;
 };
 
-const SUPABASE_URL = readEnv('VITE_SUPABASE_URL', 'VITE_SUPABASE_PROJECT_URL');
+const SUPABASE_URL = readEnv(
+  'VITE_SUPABASE_URL',
+  'VITE_SUPABASE_PROJECT_URL',
+  // Raw connector / framework names the platform may inject verbatim at runtime.
+  'SUPABASE_URL',
+  'NEXT_PUBLIC_SUPABASE_URL',
+);
 const SUPABASE_PUBLISHABLE_KEY = readEnv(
   'VITE_SUPABASE_ANON_KEY',
   'VITE_SUPABASE_PUBLISHABLE_KEY',
   'VITE_SUPABASE_KEY',
+  // Raw connector / framework names the platform may inject verbatim at runtime.
+  'SUPABASE_ANON_KEY',
+  'SUPABASE_PUBLISHABLE_KEY',
+  'NEXT_PUBLIC_SUPABASE_ANON_KEY',
 );
 
 // Validate environment variables
