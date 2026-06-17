@@ -17,7 +17,7 @@ export default function ReviewsStickyTab() {
   useEffect(() => {
     // Get the Shopify product ID from the global state (set by ProductDetail)
     const getProductId = () => {
-      const shopifyId = (window as any).__vnsh_yotpo_product_id;
+      const shopifyId = window.__vnsh_yotpo_product_id;
       if (shopifyId) {
         setYotpoProductId(shopifyId);
       }
@@ -49,11 +49,11 @@ export default function ReviewsStickyTab() {
     if (yotpoProductId) {
       // Give Yotpo time to detect the new widget
       setTimeout(() => {
-        const yotpoWidgetsContainer = (window as any).yotpoWidgetsContainer;
+        const yotpoWidgetsContainer = window.yotpoWidgetsContainer;
         if (yotpoWidgetsContainer?.initWidgets) {
           yotpoWidgetsContainer.initWidgets();
-        } else if ((window as any).yotpo?.refreshWidgets) {
-          (window as any).yotpo.refreshWidgets();
+        } else if (window.yotpo?.refreshWidgets) {
+          window.yotpo?.refreshWidgets?.();
         }
       }, 100);
     }

@@ -671,9 +671,9 @@ const ProductDetail: React.FC = () => {
   useEffect(() => {
     if (yotpoProductId) {
       // Store globally for the reviews drawer to access
-      (window as any).__vnsh_yotpo_product_id = yotpoProductId;
-      (window as any).__vnsh_yotpo_product_name = product?.title || handle;
-      (window as any).__vnsh_yotpo_product_url = `https://vnsh.com/products/${handle}`;
+      window.__vnsh_yotpo_product_id = yotpoProductId;
+      window.__vnsh_yotpo_product_name = product?.title || handle;
+      window.__vnsh_yotpo_product_url = `https://vnsh.com/products/${handle}`;
 
       // Dispatch event for components listening
       window.dispatchEvent(new CustomEvent('vnsh:yotpo-product-change', {
@@ -685,7 +685,7 @@ const ProductDetail: React.FC = () => {
       }));
     } else {
       // Clear when no product
-      (window as any).__vnsh_yotpo_product_id = null;
+      window.__vnsh_yotpo_product_id = undefined;
     }
   }, [yotpoProductId, product?.title, handle]);
 
@@ -973,8 +973,8 @@ const ProductDetail: React.FC = () => {
                             const faqSection = document.getElementById('faq');
                             if (faqSection) {
                               faqSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                              if (typeof window !== 'undefined' && (window as any).gtag) {
-                                (window as any).gtag('event', 'faq_button_click', {
+                              if (typeof window !== 'undefined' && window.gtag) {
+                                window.gtag('event', 'faq_button_click', {
                                   event_category: 'Product',
                                   event_label: product.title,
                                   page_title: document.title

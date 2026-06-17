@@ -5,12 +5,19 @@
  * in the Medusa backend.
  */
 
-import { Medusa } from '@medusajs/js-sdk'
+import Medusa from '@medusajs/js-sdk'
+import {
+  OMNICART_BACKEND_URL,
+  OMNICART_PUBLISHABLE_KEY,
+  OMNICART_REGION_ID,
+  OMNICART_INVENTORY_LOCATION_ID,
+  OMNICART_SALES_CHANNEL_ID,
+} from '../omnicart-config'
 
-// Initialize Medusa client
+// Initialize Medusa storefront client (publishable key only; never an admin key).
 const medusa = new Medusa({
-  publishable_key: (process.env.OMNICART_PUBLISHABLE_KEY) || (process.env.VITE_OMNICART_PUBLISHABLE_KEY) || 'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20',
-  baseUrl: (process.env.OMNICART_BACKEND_URL) || (process.env.VITE_OMNICART_BACKEND_URL) || 'https://vnsh.omnicart.cc'
+  baseUrl: OMNICART_BACKEND_URL,
+  ...(OMNICART_PUBLISHABLE_KEY ? { publishableKey: OMNICART_PUBLISHABLE_KEY } : {}),
 })
 
 /**
@@ -84,8 +91,8 @@ export async function getFulfillmentProviders() {
  */
 export async function getShippingOptions(cartId: string) {
   try {
-    const cart = await medusa.carts.getShippingOptions(cartId)
-    return cart.shipping_options || []
+    const { shipping_options } = await medusa.store.fulfillment.listCartOptions({ cart_id: cartId })
+    return shipping_options || []
   } catch (error) {
     console.error('Error fetching shipping options:', error)
     throw error
@@ -101,7 +108,7 @@ export async function getShippingOptions(cartId: string) {
  */
 export async function addShippingMethod(cartId: string, optionId: string) {
   try {
-    const cart = await medusa.carts.addShippingMethod(cartId, {
+    const { cart } = await medusa.store.cart.addShippingMethod(cartId, {
       option_id: optionId
     })
     return cart
@@ -319,13 +326,17 @@ export const SHIPPING_OPTION_LOCAL_PICKUP = {
 
 /**
  * Configuration Constants
+ *
+ * Store ids resolve from the central config; admin URL/token resolve from the
+ * server-side environment ONLY. Admin tokens are NOT browser-safe and MUST NOT
+ * be hardcoded — leave the env unset in client builds.
  */
 export const FULFILLMENT_CONFIG = {
-  REGION_ID: process.env.MEDUSA_DEFAULT_REGION_ID || 'reg_01K0QFZV7K9KR0PNEQ58K86PYZ',
-  LOCATION_ID: process.env.MEDUSA_INVENTORY_LOCATION_ID || 'sloc_01K1E2WAP9TPFZQ0157EGAZEFQ',
-  SALES_CHANNEL_ID: process.env.MEDUSA_SALES_CHANNEL_ID || 'sc_01K5CH69P710A6RJGS2PEGS9FM',
-  ADMIN_TOKEN: process.env.MEDUSA_ADMIN_TOKEN || 'sk_98a6dd9e4a9ad699785e94b6f652fde592fdc0bc37886eddb93b1a734134f848',
-  ADMIN_URL: process.env.MEDUSA_ADMIN_URL || 'https://vnsh.omnicart.cc'
+  REGION_ID: OMNICART_REGION_ID,
+  LOCATION_ID: OMNICART_INVENTORY_LOCATION_ID,
+  SALES_CHANNEL_ID: OMNICART_SALES_CHANNEL_ID,
+  ADMIN_TOKEN: (typeof process !== 'undefined' && process.env?.MEDUSA_ADMIN_TOKEN) || '',
+  ADMIN_URL: (typeof process !== 'undefined' && process.env?.MEDUSA_ADMIN_URL) || OMNICART_BACKEND_URL
 }
 
 export default {

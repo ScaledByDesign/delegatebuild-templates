@@ -3,6 +3,7 @@ import medusaError from "../util/medusa-error"
 import { getAuthHeaders, getCartId, removeCartId, setCartId } from "../util/cookies"
 import { Cart, CartItem } from "@/hooks/useCart"
 import { getStoredAttribution } from "@/hooks/useAttributionCapture"
+import { OMNICART_PUBLISHABLE_KEY, OMNICART_SALES_CHANNEL_ID, OMNICART_REGION_ID } from "@/lib/omnicart-config"
 
 /**
  * Detects the Medusa error that occurs when a cart mutation tries to delete or
@@ -23,15 +24,6 @@ export const isTerminalPaymentSessionError = (error: any): boolean => {
   )
 }
 
-// Ensure publishable key is sent with store requests
-const OMNICART_PUBLISHABLE_KEY =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
-  (process.env.OMNICART_PUBLISHABLE_KEY) ||
-  'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
-
-// VNSH storefront sales channel for product/carts visibility
-const VNSH_SALES_CHANNEL_ID = 'sc_01K5CH69P710A6RJGS2PEGS9FM'
-
 const getEnvVar = (key: string): string | undefined => {
   if (typeof window !== 'undefined' && (import.meta as any)?.env) {
     const value = (import.meta as any).env[key]
@@ -50,14 +42,12 @@ const getEnvVar = (key: string): string | undefined => {
   return undefined
 }
 
-// Known primary region for the storefront. This ensures carts can be created even when
-// the client cannot read environment variables (e.g. browser runtime without Vite-prefixed vars).
-const DEFAULT_REGION_ID_FALLBACK = 'reg_01K0QFZV7K9KR0PNEQ58K86PYZ'
-
+// Primary region for the storefront, resolved from config (no hardcoded id).
+// Empty when unconfigured; the backend then resolves the region from the cart.
 const DEFAULT_REGION_ENV_ID =
   getEnvVar('VITE_OMNICART_DEFAULT_REGION_ID') ||
   getEnvVar('OMNICART_DEFAULT_REGION_ID') ||
-  DEFAULT_REGION_ID_FALLBACK
+  OMNICART_REGION_ID
 
 let cachedRegionId: string | undefined = undefined
 
@@ -208,7 +198,7 @@ export const createCart = async (regionId?: string) => {
     const headers = getStoreHeaders()
 
     const body: Record<string, unknown> = {
-      sales_channel_id: VNSH_SALES_CHANNEL_ID,
+      ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: OMNICART_SALES_CHANNEL_ID } : {}),
     }
     const resolvedRegionId = await resolveRegionId(regionId)
     if (resolvedRegionId) {

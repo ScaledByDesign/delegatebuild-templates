@@ -1,11 +1,6 @@
 // Using direct API client for CORS-free API access
 import { medusaClient } from '../../lib/medusa-client';
-
-const OMNICART_PUBLISHABLE_KEY =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
-  (process.env.OMNICART_PUBLISHABLE_KEY) ||
-  'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
-const VNSH_SALES_CHANNEL_ID = 'sc_01K5CH69P710A6RJGS2PEGS9FM'
+import { OMNICART_PUBLISHABLE_KEY, OMNICART_SALES_CHANNEL_ID } from '@/lib/omnicart-config';
 
 export interface MedusaProductOption {
   id: string
@@ -147,8 +142,8 @@ async function fetchStoreProductByHandle(
       fields: DEFAULT_QUERY_FIELDS,
     }
 
-    if (useSalesChannel) {
-      query['sales_channel_id'] = [VNSH_SALES_CHANNEL_ID]
+    if (useSalesChannel && OMNICART_SALES_CHANNEL_ID) {
+      query['sales_channel_id'] = [OMNICART_SALES_CHANNEL_ID]
     }
 
     const response = await medusaClient.get<{ products: MedusaProduct[] }>('/store/products', {
@@ -338,7 +333,11 @@ export async function getProducts(params?: {
       limit: params?.limit ?? 50,
       offset: params?.offset ?? 0,
       fields: DEFAULT_QUERY_FIELDS,
-      'sales_channel_id': params?.sales_channel_id ?? [VNSH_SALES_CHANNEL_ID],
+    }
+
+    const resolvedSalesChannelId = params?.sales_channel_id ?? (OMNICART_SALES_CHANNEL_ID ? [OMNICART_SALES_CHANNEL_ID] : undefined)
+    if (resolvedSalesChannelId) {
+      query['sales_channel_id'] = resolvedSalesChannelId
     }
 
     if (params?.collection_id?.length) {
@@ -400,7 +399,7 @@ export async function getProduct(id: string): Promise<MedusaProduct | null> {
       {
         query: {
           fields: DEFAULT_QUERY_FIELDS,
-          sales_channel_id: [VNSH_SALES_CHANNEL_ID]
+          ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: [OMNICART_SALES_CHANNEL_ID] } : {})
         },
         headers: {
           'x-publishable-api-key': OMNICART_PUBLISHABLE_KEY,
@@ -463,7 +462,7 @@ export async function searchProducts(query: string, limit = 20): Promise<MedusaP
         q: query,
         limit,
         fields: DEFAULT_QUERY_FIELDS,
-        sales_channel_id: [VNSH_SALES_CHANNEL_ID]
+        ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: [OMNICART_SALES_CHANNEL_ID] } : {})
       },
       headers: {
         'x-publishable-api-key': OMNICART_PUBLISHABLE_KEY,
@@ -495,7 +494,7 @@ export async function checkVariantStock(variantId: string): Promise<{
         query: {
           variants: { id: [variantId] },
           fields: "*variants,*variants.prices,*variants.options,+variants.inventory_quantity,*options,*options.values",
-          sales_channel_id: [VNSH_SALES_CHANNEL_ID]
+          ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: [OMNICART_SALES_CHANNEL_ID] } : {})
         },
         headers: {
           'x-publishable-api-key': OMNICART_PUBLISHABLE_KEY,
@@ -553,7 +552,7 @@ export async function checkMultipleVariantsStock(variantIds: string[]): Promise<
         query: {
           variants: { id: variantIds },
           fields: "*variants,*variants.prices,*variants.options,+variants.inventory_quantity,*options,*options.values",
-          sales_channel_id: [VNSH_SALES_CHANNEL_ID],
+          ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: [OMNICART_SALES_CHANNEL_ID] } : {}),
           limit: 100
         },
         headers: {

@@ -3,6 +3,8 @@
  * This is a simplified version for frontend use
  */
 
+import { OMNICART_BACKEND_URL, OMNICART_SALES_CHANNEL_ID } from '../omnicart-config';
+
 interface AdminClientConfig {
   baseUrl: string;
   token: string;
@@ -14,41 +16,6 @@ interface RequestOptions {
   query?: Record<string, string | number | undefined>;
   headers?: Record<string, string>;
 }
-
-// Function to get environment variables
-function getEnvVar(key: string): string | undefined {
-  if (typeof window !== 'undefined' && import.meta?.env) {
-    return import.meta.env[key];
-  }
-  return undefined;
-}
-
-// Determine the OmniCart backend URL using the same logic as medusa-client.ts
-const isBrowser = typeof window !== 'undefined';
-
-const explicitBackendUrl =
-  getEnvVar('VITE_OMNICART_BACKEND_URL') ||
-  getEnvVar('OMNICART_BACKEND_URL') ||
-  undefined;
-
-const shouldUseProxy =
-  isBrowser &&
-  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') &&
-  !getEnvVar('VITE_OMNICART_DISABLE_PROXY');
-
-const OMNICART_BACKEND_URL = explicitBackendUrl || (isBrowser ? 'https://vnsh.omnicart.cc' : 'https://vnsh.omnicart.cc');
-
-const OMNICART_SALES_CHANNEL_ID =
-  getEnvVar('VITE_OMNICART_SALES_CHANNEL_ID') ||
-  getEnvVar('OMNICART_SALES_CHANNEL_ID') ||
-  undefined;
-
-console.log('Admin Client Configuration:', {
-  baseUrl: OMNICART_BACKEND_URL,
-  shouldUseProxy,
-  explicitBackendUrl,
-  salesChannelId: OMNICART_SALES_CHANNEL_ID,
-});
 
 export class MedusaAdminClient {
   private readonly baseUrl: string;
@@ -114,8 +81,8 @@ export class MedusaAdminClient {
       expand: 'variants,variants.prices,metadata,sales_channels',
     };
 
-    if (MEDUSA_SALES_CHANNEL_ID) {
-      query['sales_channel_id[]'] = MEDUSA_SALES_CHANNEL_ID;
+    if (OMNICART_SALES_CHANNEL_ID) {
+      query['sales_channel_id[]'] = OMNICART_SALES_CHANNEL_ID;
     }
 
     const response = await this.request<{ products: any[] }>('/products', {
@@ -123,12 +90,12 @@ export class MedusaAdminClient {
     });
 
     const products = response.products ?? [];
-    if (!MEDUSA_SALES_CHANNEL_ID) {
+    if (!OMNICART_SALES_CHANNEL_ID) {
       return products;
     }
 
     return products.filter((product) =>
-      (product.sales_channels ?? []).some((channel: { id: string }) => channel.id === MEDUSA_SALES_CHANNEL_ID)
+      (product.sales_channels ?? []).some((channel: { id: string }) => channel.id === OMNICART_SALES_CHANNEL_ID)
     );
   }
 
@@ -182,19 +149,19 @@ export class MedusaAdminClient {
       expand: 'variants,variants.prices',
     };
 
-    if (MEDUSA_SALES_CHANNEL_ID) {
-      query['sales_channel_id[]'] = MEDUSA_SALES_CHANNEL_ID;
+    if (OMNICART_SALES_CHANNEL_ID) {
+      query['sales_channel_id[]'] = OMNICART_SALES_CHANNEL_ID;
     }
 
     const response = await this.request<{ products: any[] }>('/products', { query });
     const products = response.products ?? [];
 
-    if (!MEDUSA_SALES_CHANNEL_ID) {
+    if (!OMNICART_SALES_CHANNEL_ID) {
       return products;
     }
 
     return products.filter((product) =>
-      (product.sales_channels ?? []).some((channel: { id: string }) => channel.id === MEDUSA_SALES_CHANNEL_ID)
+      (product.sales_channels ?? []).some((channel: { id: string }) => channel.id === OMNICART_SALES_CHANNEL_ID)
     );
   }
 }
@@ -209,11 +176,10 @@ export function getAdminClient(): MedusaAdminClient {
     // Use the same backend URL logic as the main medusa client
     const baseUrl = OMNICART_BACKEND_URL;
 
-    // In production, you'd want to get this from a secure auth flow
-    // For now, we'll try to get it from localStorage or environment
-    const token = localStorage.getItem('medusa_admin_token') ||
-                  getEnvVar('VITE_OMNICART_ADMIN_TOKEN') ||
-                  '';
+    // Admin tokens are NOT browser-safe, so they are never read from a build-time
+    // env var (that would bundle the secret). The token is provided at runtime by
+    // an authenticated admin and held only in localStorage for the session.
+    const token = localStorage.getItem('medusa_admin_token') || '';
 
     console.log('Creating admin client with:', { baseUrl, hasToken: !!token });
     adminClient = new MedusaAdminClient({ baseUrl, token });

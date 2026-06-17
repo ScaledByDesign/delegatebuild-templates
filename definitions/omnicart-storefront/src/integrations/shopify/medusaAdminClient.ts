@@ -443,8 +443,9 @@ export class MedusaAdminClient {
         throw new Error("Medusa upload response missing URL")
       }
 
-      // Fix localhost URLs to use the correct public domain
-      const fixedUrl = url.replace('http://localhost:9000', 'https://vnsh.omnicart.cc')
+      // Rewrite localhost upload URLs to the configured public admin origin.
+      const publicBase = this.baseUrl.replace(/\/admin$/, '')
+      const fixedUrl = url.replace('http://localhost:9000', publicBase)
       return fixedUrl
     } finally {
       clearTimeout(timeoutId)

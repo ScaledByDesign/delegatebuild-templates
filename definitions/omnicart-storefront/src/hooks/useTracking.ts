@@ -34,15 +34,15 @@ function initializeTracking() {
     console.log('✅ Google Analytics initialized');
   }
 
-  if ((window as any).fbq) {
+  if (window.fbq) {
     console.log('✅ Facebook Pixel initialized');
   }
 
-  if ((window as any)._cl) {
+  if (window._cl) {
     console.log('✅ CustomerLabs CDP initialized');
   }
 
-  if ((window as any).attentive) {
+  if (window.attentive) {
     console.log('✅ Attentive SMS initialized');
   }
 
@@ -55,8 +55,8 @@ function initializeTracking() {
  */
 export function trackPageView(path: string) {
   // GTM Page View
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'page_view',
       page_path: path,
       page_title: document.title,
@@ -66,14 +66,14 @@ export function trackPageView(path: string) {
   }
 
   // Facebook Pixel Page View (if not already tracked in index.html)
-  if ((window as any).fbq) {
-    (window as any).fbq('track', 'PageView');
+  if (window.fbq) {
+    window.fbq('track', 'PageView');
   }
 
   // CustomerLabs Page View - SDK auto-tracks pageviews, only log for debugging
   // The CustomerLabs SDK v2.0.0 automatically tracks page views via the snippet
   // Manual pageview calls can cause issues with the SDK's internal state
-  if ((window as any)._cl) {
+  if (window._cl) {
     console.log('📊 CustomerLabs: Page view auto-tracked by SDK for:', path);
   }
 
@@ -88,8 +88,8 @@ export function trackPageView(path: string) {
  */
 export function trackEvent(eventName: string, eventData?: Record<string, any>) {
   // GTM Custom Event
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: eventName,
       ...eventData,
       timestamp: new Date().toISOString(),
@@ -98,17 +98,17 @@ export function trackEvent(eventName: string, eventData?: Record<string, any>) {
   }
 
   // Facebook Pixel Custom Event
-  if ((window as any).fbq) {
-    (window as any).fbq('trackCustom', eventName, eventData);
+  if (window.fbq) {
+    window.fbq('trackCustom', eventName, eventData);
   }
 
   // CustomerLabs Custom Event (v2.0.0 JS Helper API: _cl.trackClick(eventName, properties))
   // Documentation: https://www.customerlabs.com/docs/website-event-tracking/developer-documentation/javascript-helper-functions-code-snippet/
   try {
-    if ((window as any)._cl && typeof (window as any)._cl.trackClick === 'function') {
+    if (window._cl && typeof window._cl.trackClick === 'function') {
       const clEventInterval = setInterval(() => {
         try {
-          if (((window as any).CLabsgbVar || {}).generalProps?.uid) {
+          if (((window.CLabsgbVar || {}) as { generalProps?: { uid?: unknown } }).generalProps?.uid) {
             // Convert flat eventData to CustomerLabs customProperties format
             const customProperties: Record<string, { t: string; v: string }> = {};
             if (eventData) {
@@ -118,7 +118,7 @@ export function trackEvent(eventName: string, eventData?: Record<string, any>) {
               });
             }
             const properties = { customProperties };
-            (window as any)._cl.trackClick(eventName, properties);
+            window._cl?.trackClick?.(eventName, properties);
             console.log('📊 CustomerLabs Event tracked:', eventName, eventData);
             clearInterval(clEventInterval);
           }
@@ -147,8 +147,8 @@ export function trackAddToCart(product: {
   category?: string;
 }) {
   // GTM Add to Cart
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'add_to_cart',
       ecommerce: {
         items: [
@@ -164,8 +164,8 @@ export function trackAddToCart(product: {
   }
 
   // Facebook Pixel Add to Cart
-  if ((window as any).fbq) {
-    (window as any).fbq('track', 'AddToCart', {
+  if (window.fbq) {
+    window.fbq('track', 'AddToCart', {
       content_name: product.title,
       content_ids: [product.id],
       content_type: 'product',
@@ -177,10 +177,10 @@ export function trackAddToCart(product: {
   // CustomerLabs Add to Cart (v2.0.0 JS Helper API: _cl.trackClick(eventName, properties))
   // Documentation: https://www.customerlabs.com/docs/website-event-tracking/developer-documentation/javascript-helper-functions-code-snippet/
   try {
-    if ((window as any)._cl && typeof (window as any)._cl.trackClick === 'function') {
+    if (window._cl && typeof window._cl.trackClick === 'function') {
       const clAddToCartInterval = setInterval(() => {
         try {
-          if (((window as any).CLabsgbVar || {}).generalProps?.uid) {
+          if (((window.CLabsgbVar || {}) as { generalProps?: { uid?: unknown } }).generalProps?.uid) {
             const properties = {
               productProperties: [
                 {
@@ -197,7 +197,7 @@ export function trackAddToCart(product: {
                 value: { t: 'number', v: String(product.price * product.quantity) },
               },
             };
-            (window as any)._cl.trackClick('Added to cart', properties);
+            window._cl?.trackClick?.('Added to cart', properties);
             console.log('📊 CustomerLabs Add to Cart tracked:', product);
             clearInterval(clAddToCartInterval);
           }
@@ -213,7 +213,7 @@ export function trackAddToCart(product: {
   }
 
   // Attentive Add to Cart
-  if ((window as any).attentive && typeof (window as any).attentive.analytics?.addToCart === 'function') {
+  if (window.attentive && typeof window.attentive.analytics?.addToCart === 'function') {
     const attentiveItem: any = {
       productId: product.id,
       productVariantId: product.variant_id || product.id,
@@ -233,7 +233,7 @@ export function trackAddToCart(product: {
       attentiveItem.category = product.category;
     }
 
-    (window as any).attentive.analytics.addToCart({
+    window.attentive.analytics?.addToCart({
       items: [attentiveItem],
     });
     console.log('📊 Attentive Add to Cart tracked:', product);
@@ -260,8 +260,8 @@ export function trackPurchase(orderData: {
   }>;
 }) {
   // GTM Purchase Event
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'purchase',
       ecommerce: {
         transaction_id: orderData.order_id,
@@ -279,8 +279,8 @@ export function trackPurchase(orderData: {
   }
 
   // Facebook Pixel Purchase Event
-  if ((window as any).fbq) {
-    (window as any).fbq('track', 'Purchase', {
+  if (window.fbq) {
+    window.fbq('track', 'Purchase', {
       value: orderData.total,
       currency: orderData.currency,
       content_ids: orderData.items.map((item) => item.id),
@@ -293,10 +293,10 @@ export function trackPurchase(orderData: {
   // CustomerLabs Purchase Event (v2.0.0 JS Helper API: _cl.trackClick(eventName, properties))
   // Documentation: https://www.customerlabs.com/docs/website-event-tracking/developer-documentation/javascript-helper-functions-code-snippet/
   try {
-    if ((window as any)._cl && typeof (window as any)._cl.trackClick === 'function') {
+    if (window._cl && typeof window._cl.trackClick === 'function') {
       const clPurchaseInterval = setInterval(() => {
         try {
-          if (((window as any).CLabsgbVar || {}).generalProps?.uid) {
+          if (((window.CLabsgbVar || {}) as { generalProps?: { uid?: unknown } }).generalProps?.uid) {
             const productProperties = orderData.items.map((item) => ({
               product_id: { t: 'string', v: item.id },
               product_name: { t: 'string', v: item.name },
@@ -327,7 +327,7 @@ export function trackPurchase(orderData: {
                 ...attributionProps,
               },
             };
-            (window as any)._cl.trackClick('Purchased', properties);
+            window._cl?.trackClick?.('Purchased', properties);
             console.log('📊 CustomerLabs Purchase tracked:', orderData.order_id, orderData.total);
             clearInterval(clPurchaseInterval);
           }
@@ -343,7 +343,7 @@ export function trackPurchase(orderData: {
   }
 
   // Attentive Purchase Event
-  if ((window as any).attentive && typeof (window as any).attentive.analytics?.purchase === 'function') {
+  if (window.attentive && typeof window.attentive.analytics?.purchase === 'function') {
     const attentiveData: any = {
       items: orderData.items.map((item) => {
         const attentiveItem: any = {
@@ -383,7 +383,7 @@ export function trackPurchase(orderData: {
       }
     }
 
-    (window as any).attentive.analytics.purchase(attentiveData);
+    window.attentive.analytics?.purchase(attentiveData);
     console.log('📊 Attentive Purchase tracked:', orderData.order_id, orderData.total);
   }
 }
@@ -397,10 +397,10 @@ export function identifyUser(userId: string, traits?: Record<string, any>) {
   // CustomerLabs Identify (v2.0.0 JS Helper API: _cl.identify(properties))
   // Documentation: https://www.customerlabs.com/docs/website-event-tracking/developer-documentation/javascript-helper-functions-code-snippet/
   try {
-    if ((window as any)._cl && typeof (window as any)._cl.identify === 'function') {
+    if (window._cl && typeof window._cl.identify === 'function') {
       const clIdentifyInterval = setInterval(() => {
         try {
-          if (((window as any).CLabsgbVar || {}).generalProps?.uid) {
+          if (((window.CLabsgbVar || {}) as { generalProps?: { uid?: unknown } }).generalProps?.uid) {
             // Build user_traits object in CustomerLabs format
             const userTraitsValue: Record<string, { t: string; v: string }> = {};
             if (traits?.first_name) userTraitsValue.first_name = { t: 'string', v: traits.first_name };
@@ -438,7 +438,7 @@ export function identifyUser(userId: string, traits?: Record<string, any>) {
               };
             }
 
-            (window as any)._cl.identify(properties);
+            window._cl?.identify?.(properties);
             console.log('👤 CustomerLabs User identified:', userId, traits);
             clearInterval(clIdentifyInterval);
           }
@@ -454,8 +454,8 @@ export function identifyUser(userId: string, traits?: Record<string, any>) {
   }
 
   // GTM User Identification (via dataLayer)
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'user_identified',
       user_id: userId,
       ...traits,
@@ -465,7 +465,7 @@ export function identifyUser(userId: string, traits?: Record<string, any>) {
   }
 
   // Attentive User Identification
-  if ((window as any).attentive && typeof (window as any).attentive.analytics?.identify === 'function') {
+  if (window.attentive && typeof window.attentive.analytics?.identify === 'function') {
     const identifyData: any = {};
 
     // Add email if available
@@ -480,7 +480,7 @@ export function identifyUser(userId: string, traits?: Record<string, any>) {
 
     // Only trigger if we have email or phone
     if (identifyData.email || identifyData.phone) {
-      (window as any).attentive.analytics.identify(identifyData);
+      window.attentive.analytics?.identify(identifyData);
       console.log('👤 Attentive User identified:', identifyData);
     }
   }
@@ -507,8 +507,8 @@ export function trackProductView(product: {
   customer_id?: string;
 }) {
   // GTM Product View
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'view_item',
       ecommerce: {
         items: [
@@ -525,8 +525,8 @@ export function trackProductView(product: {
   }
 
   // Facebook Pixel Product View
-  if ((window as any).fbq) {
-    (window as any).fbq('track', 'ViewContent', {
+  if (window.fbq) {
+    window.fbq('track', 'ViewContent', {
       content_name: product.title,
       content_ids: [product.id],
       content_type: 'product',
@@ -538,10 +538,10 @@ export function trackProductView(product: {
   // CustomerLabs Product View (v2.0.0 JS Helper API: _cl.trackClick(eventName, properties))
   // Documentation: https://www.customerlabs.com/docs/website-event-tracking/developer-documentation/javascript-helper-functions-code-snippet/
   try {
-    if ((window as any)._cl && typeof (window as any)._cl.trackClick === 'function') {
+    if (window._cl && typeof window._cl.trackClick === 'function') {
       const clProductViewInterval = setInterval(() => {
         try {
-          if (((window as any).CLabsgbVar || {}).generalProps?.uid) {
+          if (((window.CLabsgbVar || {}) as { generalProps?: { uid?: unknown } }).generalProps?.uid) {
             const properties = {
               productProperties: [
                 {
@@ -556,7 +556,7 @@ export function trackProductView(product: {
                 page_url: { t: 'string', v: window.location.href },
               },
             };
-            (window as any)._cl.trackClick('Product viewed', properties);
+            window._cl?.trackClick?.('Product viewed', properties);
             console.log('📊 CustomerLabs Product View tracked:', product.title);
             clearInterval(clProductViewInterval);
           }
@@ -572,7 +572,7 @@ export function trackProductView(product: {
   }
 
   // Attentive Product View
-  if ((window as any).attentive && typeof (window as any).attentive.analytics?.productView === 'function') {
+  if (window.attentive && typeof window.attentive.analytics?.productView === 'function') {
     const attentiveItem: any = {
       productId: product.id,
       productVariantId: product.variant_id || product.id,
@@ -591,7 +591,7 @@ export function trackProductView(product: {
       attentiveItem.category = product.category;
     }
 
-    (window as any).attentive.analytics.productView({
+    window.attentive.analytics?.productView({
       items: [attentiveItem],
     });
     console.log('📊 Attentive Product View tracked:', product.title);
@@ -619,8 +619,8 @@ export function trackBeginCheckout(cartData: {
   }>;
 }) {
   // GTM Begin Checkout
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'begin_checkout',
       ecommerce: {
         value: cartData.total,
@@ -637,8 +637,8 @@ export function trackBeginCheckout(cartData: {
   }
 
   // Facebook Pixel Begin Checkout
-  if ((window as any).fbq) {
-    (window as any).fbq('track', 'InitiateCheckout', {
+  if (window.fbq) {
+    window.fbq('track', 'InitiateCheckout', {
       value: cartData.total,
       currency: cartData.currency,
       content_ids: cartData.items.map((item) => item.id),
@@ -650,10 +650,10 @@ export function trackBeginCheckout(cartData: {
   // CustomerLabs Begin Checkout (v2.0.0 JS Helper API: _cl.trackClick(eventName, properties))
   // Documentation: https://www.customerlabs.com/docs/website-event-tracking/developer-documentation/javascript-helper-functions-code-snippet/
   try {
-    if ((window as any)._cl && typeof (window as any)._cl.trackClick === 'function') {
+    if (window._cl && typeof window._cl.trackClick === 'function') {
       const clCheckoutInterval = setInterval(() => {
         try {
-          if (((window as any).CLabsgbVar || {}).generalProps?.uid) {
+          if (((window.CLabsgbVar || {}) as { generalProps?: { uid?: unknown } }).generalProps?.uid) {
             const productProperties = cartData.items.map((item) => ({
               product_id: { t: 'string', v: item.id },
               product_name: { t: 'string', v: item.name },
@@ -667,7 +667,7 @@ export function trackBeginCheckout(cartData: {
                 value: { t: 'number', v: String(cartData.total) },
               },
             };
-            (window as any)._cl.trackClick('Checkout made', properties);
+            window._cl?.trackClick?.('Checkout made', properties);
             console.log('📊 CustomerLabs Begin Checkout tracked:', cartData.total);
             clearInterval(clCheckoutInterval);
           }

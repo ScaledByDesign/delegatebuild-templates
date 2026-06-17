@@ -6,7 +6,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react'
-import { useCart } from '@/hooks/useCart'
+import { useCart, type Cart } from '@/hooks/useCart'
 import { getShippingOptions, addShippingMethod } from '@/lib/fulfillment'
 import { AlertCircle, Loader, CheckCircle2 } from 'lucide-react'
 
@@ -19,6 +19,21 @@ interface ShippingOption {
   provider?: {
     id: string
     name: string
+  }
+}
+
+/** Map an OmniCart (Medusa v2) cart shipping option to the local view model. */
+function toShippingOption(o: {
+  id: string
+  name: string
+  amount?: number
+  price_type?: string
+}): ShippingOption {
+  return {
+    id: o.id,
+    name: o.name,
+    amount: o.amount,
+    calculated: o.price_type === 'calculated',
   }
 }
 
@@ -53,7 +68,7 @@ export function ShippingMethodSelector({
       setError(null)
 
       const shippingOptions = await getShippingOptions(cart.id)
-      setOptions(shippingOptions)
+      setOptions(shippingOptions.map(toShippingOption))
 
       // Set the currently selected option
       const currentOption = cart?.shipping_methods?.[0]?.shipping_option_id
@@ -93,7 +108,7 @@ export function ShippingMethodSelector({
 
       // Update cart with selected shipping method
       const updatedCart = await addShippingMethod(cart.id, optionId)
-      setCart?.(updatedCart)
+      setCart?.(updatedCart as unknown as Cart)
       setSelectedOptionId(optionId)
 
       // Call callback if provided
@@ -263,7 +278,7 @@ export function ShippingMethodSummary() {
         const currentOptionId = cart.shipping_methods?.[0]?.shipping_option_id
         if (currentOptionId) {
           const selectedOption = options.find((opt) => opt.id === currentOptionId)
-          setOption(selectedOption || null)
+          setOption(selectedOption ? toShippingOption(selectedOption) : null)
         }
       } catch (err) {
         console.error('Error loading shipping method summary:', err)
