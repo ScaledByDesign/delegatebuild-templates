@@ -467,7 +467,7 @@ export default function Admin() {
                 className="mt-1"
               />
               <p className="text-xs text-gray-500 mt-2">
-                Find your token in the <code className="bg-gray-100 px-1 py-0.5 rounded">.env</code> file under <code className="bg-gray-100 px-1 py-0.5 rounded">MEDUSA_ADMIN_TOKEN</code>
+                Find your token in the <code className="bg-gray-100 px-1 py-0.5 rounded">.env</code> file under <code className="bg-gray-100 px-1 py-0.5 rounded">OMNICART_ADMIN_TOKEN</code>
               </p>
             </div>
             <Button onClick={handleLogin} className="w-full bg-[#176326] hover:bg-[#0f4a1c]">
