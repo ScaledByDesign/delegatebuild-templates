@@ -1,7 +1,12 @@
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import ErrorBoundary from './components/ErrorBoundary.tsx'
+import { hydratePublicEnv } from './lib/public-env'
 import './index.css'
+
+// Backfill browser-safe connector values from the Worker as early as possible so
+// runtime readers resolve credentials for workspaces linked after the build.
+hydratePublicEnv()
 
 // Detect chunk loading failures (stale deployments, migration from Next.js, etc.)
 function isChunkLoadError(message: string): boolean {

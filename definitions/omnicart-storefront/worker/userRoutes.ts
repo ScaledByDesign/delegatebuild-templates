@@ -10,8 +10,37 @@ interface OmniCartEnv extends Env {
   STRIPE_SECRET_KEY?: string;
 }
 
+// Names that must NEVER reach the browser, even if they match an allow rule.
+const BROWSER_ENV_DENY = /(SECRET|PRIVATE|PASSWORD|SERVICE_ROLE|SECURITY|_TOKEN|ACCESS_TOKEN|API_KEY|CLIENT_SECRET|WEBHOOK_SECRET|ADMIN)/i;
+// Browser-safe value shapes: publishable/public/anon keys, public URLs, and the
+// non-sensitive commerce identifiers the storefront needs client-side.
+const BROWSER_ENV_ALLOW = /(PUBLISHABLE_KEY|PUBLIC_KEY|ANON_KEY|_URL$|REGION_ID|SALES_CHANNEL_ID|INVENTORY_LOCATION_ID|COLLECTION_FALLBACK|MERCHANT_ID|ACCOUNT_ID|TEAM_ID|STORE_DOMAIN)/i;
+
+/** True when an env var name is safe to expose to browser code. */
+function isBrowserSafeEnvName(name: string): boolean {
+  if (BROWSER_ENV_DENY.test(name)) return false;
+  return BROWSER_ENV_ALLOW.test(name);
+}
+
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   app.get('/api/test', (c) => c.json({ success: true, data: { name: 'omnicart-storefront works' } }));
+
+  // --- Dynamic browser-safe env -------------------------------------------
+  // Expose only the connector values that are safe to ship to the browser
+  // (publishable/public keys, anon keys, public URLs, region/channel ids), so
+  // the frontend resolves credentials dynamically from whatever workspace
+  // connectors are bound to THIS deployment. Secret/private/token/password keys
+  // are never returned. Self-healing: new browser-safe vars flow through with
+  // no code change; secrets are denied by name.
+  app.get('/api/public-env', (c) => {
+    const env = c.env as unknown as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value !== 'string' || value === '') continue;
+      if (isBrowserSafeEnvName(key)) out[key] = value;
+    }
+    return c.json(out);
+  });
 
   // --- Send Contact Email ----------------------------------------------------
   app.post('/api/send-contact-email', async (c) => {
