@@ -9,7 +9,9 @@ import {
   CircleDot,
   CheckCircle2,
   Gauge,
+  Sparkles,
 } from "lucide-react";
+import { useDelegateAI } from "@/lib/delegate-ai";
 import { AppScrollContainer } from "@/components/webos/AppScrollContainer";
 import {
   AppLoadingState,
@@ -61,6 +63,26 @@ export function WebOSHome() {
   const [filter, setFilter] = useState<Filter>("all");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [newTitle, setNewTitle] = useState("");
+
+  // AI via the connected account's funded waterfall (see src/lib/delegate-ai.ts).
+  const ai = useDelegateAI();
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiAnswer, setAiAnswer] = useState<string | null>(null);
+
+  const askAI = async () => {
+    if (!aiPrompt.trim()) return;
+    setAiAnswer(null);
+    try {
+      const res = await ai.complete({
+        system: "You are a concise assistant embedded in a Delegate WebOS app.",
+        prompt: aiPrompt.trim(),
+        maxTokens: 400,
+      });
+      setAiAnswer(res.content);
+    } catch {
+      /* ai.error holds the message */
+    }
+  };
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["items"],
@@ -279,6 +301,44 @@ export function WebOSHome() {
                   <KV label="Open" value={openCount} />
                   <KV label="Done" value={doneCount} />
                   <KV label="Completion" value={`${completion}%`} />
+                </Section>
+
+                {/* AI via the connected account (funded waterfall + metering). */}
+                <Section icon={<Sparkles className="h-3.5 w-3.5" />} title="Ask AI">
+                  <div className="space-y-2 p-4">
+                    {!ai.available ? (
+                      <p className="text-fs-xs text-muted-foreground">
+                        AI runs through the connected Delegate account — available when
+                        this app is opened inside Delegate.
+                      </p>
+                    ) : null}
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && askAI()}
+                        placeholder="Ask anything…"
+                        disabled={!ai.available || ai.loading}
+                        className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-fs-base text-foreground outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                      />
+                      <button
+                        onClick={askAI}
+                        disabled={!ai.available || ai.loading || !aiPrompt.trim()}
+                        className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-fs-base font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {ai.loading ? "Thinking…" : "Ask"}
+                      </button>
+                    </div>
+                    {ai.error ? (
+                      <p className="text-fs-xs text-destructive">{ai.error}</p>
+                    ) : null}
+                    {aiAnswer ? (
+                      <div className="rounded-md border border-border/50 bg-surface-2 p-3 text-fs-sm text-foreground whitespace-pre-wrap">
+                        {aiAnswer}
+                      </div>
+                    ) : null}
+                  </div>
                 </Section>
 
                 {itemList}

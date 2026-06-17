@@ -92,6 +92,38 @@ data in **your own** Worker at `worker/index.ts`:
   `wrangler.jsonc` and use `c.env`.
 - On the client, fetch your own relative `/api/*` routes with TanStack Query.
 
+## AI — use the connected Delegate account (funded waterfall)
+For anything that needs an LLM, do NOT add provider SDKs or API keys. Use the
+bridged client in `src/lib/delegate-ai.ts`, which routes through the Delegate
+host to the connected workspace's `chatWithFallback`: the funded multi-provider
+waterfall (Anthropic → OpenAI → Gemini, per the workspace's AI Models order, via
+Bifrost) automatically rotates when a provider is throttled or out of credits,
+and usage is metered to that account. The app never holds a key.
+
+```tsx
+import { useDelegateAI } from "@/lib/delegate-ai";
+
+const ai = useDelegateAI(); // { complete, loading, error, available }
+
+const res = await ai.complete({
+  system: "You are a concise assistant.",
+  prompt: userInput,
+  maxTokens: 400,        // clamped server-side to 1..4096
+  // model: optional HINT — engine maps it to the latest funded equivalent
+  // responseFormat: "json" for structured output
+});
+res.content; // string
+```
+
+Rules:
+- This works ONLY when the app is embedded in Delegate. Gate AI UI on
+  `ai.available` (or `isEmbeddedInDelegate()`); show a fallback message standalone.
+- Surface `ai.error` (it includes credit-exhaustion / rate-limit messages after
+  the host has already tried the full waterfall).
+- It requires the `ai:complete` plugin permission, which internal builds get
+  automatically — do not add provider keys to `wrangler.jsonc`.
+- Keep prompts bounded (the gateway caps ~50 messages / ~48k chars per call).
+
 ## Routing
 Uses `createBrowserRouter` in `src/main.tsx`. Add routes there with
 `errorElement: <RouteErrorBoundary />`. Do NOT switch to `BrowserRouter` /
