@@ -66,12 +66,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicar
   hydrateEnv(env)
 
   const shopifyDomain = ensure(env.SHOPIFY_STORE_DOMAIN, "SHOPIFY_STORE_DOMAIN")
-  const medusaAdminUrl = ensure(
-    env.OMNICART_ADMIN_URL, "OMNICART_ADMIN_URL"
-  )
-  const medusaAdminToken = ensure(
-    env.OMNICART_ADMIN_TOKEN, "OMNICART_ADMIN_TOKEN"
-  )
+  const medusaAdminUrl = ensure(env.OMNICART_ADMIN_URL, "OMNICART_ADMIN_URL")
+  const medusaAdminToken = ensure(env.OMNICART_ADMIN_TOKEN, "OMNICART_ADMIN_TOKEN")
   const medusaDefaultRegionId = ensure(
     env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID,
     "OMNICART_REGION_ID",
@@ -84,8 +80,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ShopifyOmnicar
     throw new Error("SHOPIFY_ACCESS_TOKEN is required when SHOPIFY_DATA_SOURCE=admin-api")
   }
 
-  const timeoutOverride =
-    env.SHOPIFY_OMNICART_REQUEST_TIMEOUT_MS
+  const timeoutOverride = env.SHOPIFY_OMNICART_REQUEST_TIMEOUT_MS
   const timeoutMs = timeoutOverride
     ? Number.parseInt(timeoutOverride, 10)
     : DEFAULT_TIMEOUT

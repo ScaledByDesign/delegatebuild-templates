@@ -78,12 +78,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveOmni
   const konnektiveApiUrl = ensure(env.KONNEKTIVE_API_URL, "KONNEKTIVE_API_URL")
   const konnektiveLoginId = ensure(env.KONNEKTIVE_LOGIN_ID, "KONNEKTIVE_LOGIN_ID")
   const konnektivePassword = ensure(env.KONNEKTIVE_PASSWORD, "KONNEKTIVE_PASSWORD")
-  const medusaAdminUrl = ensure(
-    env.OMNICART_ADMIN_URL, "OMNICART_ADMIN_URL"
-  )
-  const medusaAdminToken = ensure(
-    env.OMNICART_ADMIN_TOKEN, "OMNICART_ADMIN_TOKEN"
-  )
+  const medusaAdminUrl = ensure(env.OMNICART_ADMIN_URL, "OMNICART_ADMIN_URL")
+  const medusaAdminToken = ensure(env.OMNICART_ADMIN_TOKEN, "OMNICART_ADMIN_TOKEN")
   const medusaDefaultRegionId = ensure(
     env.OMNICART_REGION_ID ?? env.OMNICART_DEFAULT_REGION_ID,
     "OMNICART_REGION_ID",
@@ -91,8 +87,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): KonnektiveOmni
 
   const requestedSource = (env.KONNEKTIVE_DATA_SOURCE as KonnektiveDataSource | undefined) ?? "api"
 
-  const timeoutOverride =
-    env.KONNEKTIVE_OMNICART_REQUEST_TIMEOUT_MS
+  const timeoutOverride = env.KONNEKTIVE_OMNICART_REQUEST_TIMEOUT_MS
   const timeoutMs = timeoutOverride
     ? Number.parseInt(timeoutOverride, 10)
     : DEFAULT_TIMEOUT
