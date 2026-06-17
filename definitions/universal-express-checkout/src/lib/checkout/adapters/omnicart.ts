@@ -3,13 +3,12 @@
  *
  * Mirrors the Delegate platform's `lib/integrations/checkout/omnicart.ts`
  * capability declaration and the OmniCart (Medusa) two-call browser-payment
- * contract. Unlike the platform — which talks to the OmniCart admin SDK
- * server-side — this template adapter REUSES the cart-lifecycle helpers already
- * shipped in `@/lib/omnicart` (createPaymentCollection / initPaymentSession /
- * completeCart), which themselves route through the Worker proxy and decode the
- * `503 { demo: true }` signal. So the OmniCart adapter is a thin wrapper that
- * adapts those `BackendResult<T>` returns into the universal contract's
- * discriminated unions.
+ * contract. This template adapter REUSES the cart-lifecycle helpers already
+ * shipped in `@/lib/omnicart` (initiateOmniPaymentSession / completeCart), which
+ * call the official Medusa v2 `@medusajs/js-sdk` through the same-origin Worker
+ * proxy and surface the `503` no-backend signal as `demo`. So the OmniCart
+ * adapter is a thin wrapper that adapts those `BackendResult<T>` returns into the
+ * universal contract's discriminated unions.
  *
  * Class: PAYMENT. `initPayment` uses the `confirm_client_secret` mode (Medusa
  * pre-creates a PaymentIntent inside a store payment-session; the browser
@@ -23,10 +22,8 @@
  */
 
 import {
-  createPaymentCollection,
-  initPaymentSession,
+  initiateOmniPaymentSession,
   completeCart,
-  formatAmount,
   type OmniCartPaymentCollection,
   type OmniOrder,
 } from "@/lib/omnicart";
@@ -90,29 +87,19 @@ function orderToSummary(order: OmniOrder, email: string): OrderSummary {
  */
 async function initPayment(input: PaymentInitInput): Promise<PaymentInitResult> {
   const cartId = input.cart.id;
-  const collected = await createPaymentCollection(cartId);
-  if (collected.demo) return { mode: "demo" };
-  if (!collected.ok || !collected.data) {
+  const result = await initiateOmniPaymentSession(cartId, DEFAULT_PROVIDER_ID);
+  if (result.demo) return { mode: "demo" };
+  if (!result.ok || !result.data) {
     return {
       status: "failed",
-      errorCode: "not_configured",
+      errorCode: "init_failed",
       userMessage:
-        collected.error ||
+        result.error ||
         "This store has not finished payment setup. Please contact the merchant.",
     };
   }
 
-  const session = await initPaymentSession(collected.data.id, DEFAULT_PROVIDER_ID);
-  if (session.demo) return { mode: "demo" };
-  if (!session.ok || !session.data) {
-    return {
-      status: "failed",
-      errorCode: "init_failed",
-      userMessage: session.error || "Could not initialize payment.",
-    };
-  }
-
-  const clientSecret = clientSecretFromCollection(session.data);
+  const clientSecret = clientSecretFromCollection(result.data);
   if (!clientSecret) {
     return {
       status: "failed",
@@ -128,7 +115,7 @@ async function initPayment(input: PaymentInitInput): Promise<PaymentInitResult> 
     // empty string here so the page falls back to its config fetch.
     publishableKey: "",
     clientSecret,
-    paymentCollectionId: collected.data.id,
+    paymentCollectionId: result.data.id,
     cartId,
   };
 }
@@ -156,11 +143,6 @@ async function chargeInitial(
     userMessage: result.error || "We could not complete your order.",
   };
 }
-
-// `formatAmount` is intentionally imported to keep parity with the platform
-// adapter's currency handling; referenced here so tree-shaking keeps the symbol
-// available to consumers that import the adapter module.
-void formatAmount;
 
 export const omnicartAdapter: CheckoutProcessorAdapter = {
   kind: "omnicart",

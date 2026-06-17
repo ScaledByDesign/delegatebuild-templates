@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { Env } from './core-utils';
 
 interface OmniCartEnv extends Env {
@@ -152,12 +153,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       });
 
       if (!stripeRes.ok) {
-        const errorData = await stripeRes.json() as any;
+        const errorData = await stripeRes.json() as { error?: { message?: string; code?: string } };
         console.error('Stripe API error:', errorData);
         return c.json({
           error: errorData.error?.message || 'Failed to update PaymentIntent',
           code: errorData.error?.code,
-        }, stripeRes.status);
+        }, stripeRes.status as ContentfulStatusCode);
       }
 
       const updatedPaymentIntent = await stripeRes.json() as any;

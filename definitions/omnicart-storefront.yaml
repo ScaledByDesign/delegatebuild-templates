@@ -54,6 +54,11 @@ package_patches:
     "class-variance-authority": "^0.7.1"
     "cmdk": "^1.0.0"
 
+# Drop the base reference's scaffold homepage — the storefront has its own Index
+# route and never imports HomePage, so it would only ship as dead code.
+excludes:
+  - "src/pages/HomePage.tsx"
+
 # Clean up the browser header for a customer-facing storefront
 file_patches:
   - file: "index.html"

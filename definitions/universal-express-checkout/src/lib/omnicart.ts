@@ -1,34 +1,56 @@
 /**
  * OmniCart commerce client.
  *
- * OmniCart is the whitelabel commerce brand used across the storefront.
- * Internally it is powered by the Medusa commerce framework — this module
- * wraps the `@medusajs/medusa-js` SDK and exposes it under OmniCart naming so
- * the rest of the app never references the underlying framework directly.
+ * OmniCart is the whitelabel commerce brand used across the storefront, powered
+ * internally by Medusa v2. This module talks to the OmniCart (Medusa v2) Store
+ * API through the OFFICIAL `@medusajs/js-sdk` and exposes it under OmniCart
+ * naming, so the rest of the app never references the underlying framework.
  *
- * All store calls go through the app's own Worker proxy at `/api/omnicart/*`
- * (see worker/userRoutes.ts) so the publishable key / backend URL stay on the
- * server and CORS is handled centrally.
+ * DUAL-MODE CONNECTION (configurable backend — Medusa Cloud OR self-hosted):
+ *   • DEFAULT — same-origin Worker proxy. The SDK targets `${origin}/api/omnicart`,
+ *     which the app's OWN Worker forwards to the configured backend server-side
+ *     (attaching the publishable key). The browser holds no backend URL/key, CORS
+ *     is centralized, and when no backend is wired the Worker returns 503 so the
+ *     UI degrades to demo mode. Never routes through the Delegate platform (CORE).
+ *   • OVERRIDE — direct to a merchant's own Medusa (self-hosted or Medusa Cloud).
+ *     Set `VITE_OMNICART_BACKEND_URL` to an ABSOLUTE backend URL (and
+ *     `VITE_OMNICART_PUBLISHABLE_KEY`, which Medusa designs to be browser-safe)
+ *     to have the SDK connect straight to that backend. Requires `store_cors` on
+ *     the Medusa backend to allow the storefront origin.
+ *
+ * Either way the backend is the Medusa store itself — NOT CORE — so a platform
+ * outage can never break the cart lifecycle.
  */
-import Medusa from "@medusajs/medusa-js";
+import Medusa, { FetchError } from "@medusajs/js-sdk";
+import type { HttpTypes } from "@medusajs/types";
 
-const isBrowser = typeof window !== 'undefined';
-export const OMNICART_BACKEND_URL = (isBrowser && (window as any).VITE_OMNICART_BACKEND_URL) || 
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_BACKEND_URL) || 
-  (process.env.OMNICART_BACKEND_URL) ||
-  "https://demo.omnicart.commerce";
+// Optional ABSOLUTE backend URL. When set, the SDK connects DIRECTLY to this
+// Medusa backend (self-hosted or Medusa Cloud); otherwise it routes through the
+// same-origin Worker proxy. Medusa publishable keys are browser-safe by design.
+const OVERRIDE_BACKEND_URL = import.meta.env?.VITE_OMNICART_BACKEND_URL || "";
+const PUBLISHABLE_KEY = import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY || "";
+/** True when using the same-origin Worker proxy (no absolute override set). */
+const PROXY_MODE = !OVERRIDE_BACKEND_URL;
 
-export const OMNICART_PUBLISHABLE_KEY = (isBrowser && (window as any).VITE_OMNICART_PUBLISHABLE_KEY) ||
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
-  (process.env.OMNICART_PUBLISHABLE_KEY) ||
-  "";
+let sdkInstance: Medusa | null = null;
 
-// The OmniCart client points directly to the configured OmniCart (Medusa) backend.
-export const omnicart = new Medusa({
-  baseUrl: OMNICART_BACKEND_URL,
-  maxRetries: 2,
-  publishableKey: OMNICART_PUBLISHABLE_KEY,
-});
+/**
+ * Lazily build the Medusa SDK client. The SDK requires an ABSOLUTE baseUrl but
+ * preserves a path prefix, so `${origin}/api/omnicart` routes cleanly through the
+ * Worker proxy while an absolute override connects straight to the backend.
+ */
+function client(): Medusa {
+  if (sdkInstance) return sdkInstance;
+  const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+  const baseUrl = OVERRIDE_BACKEND_URL || `${origin}/api/omnicart`;
+  sdkInstance = new Medusa({
+    baseUrl,
+    // In proxy mode the Worker injects the publishable key server-side; in
+    // override mode the SDK sends the (browser-safe) key itself.
+    ...(PUBLISHABLE_KEY ? { publishableKey: PUBLISHABLE_KEY } : {}),
+  });
+  return sdkInstance;
+}
 
 /** OmniCart cart shape (subset of the framework cart we rely on in the UI). */
 export interface OmniCartLineItem {
@@ -165,117 +187,112 @@ export function formatAmount(amount = 0, currencyCode = "usd"): string {
   }).format(amount / 100);
 }
 
-/** Result of applying/removing a promotion (coupon) code to a cart. */
-export interface DiscountResult {
-  ok: boolean;
-  /** The updated cart (when the backend is wired). */
-  cart?: OmniCart;
-  /** Human-readable error (e.g. invalid/expired code) when `ok` is false. */
-  error?: string;
+// ── SDK → OmniCart mappers ───────────────────────────────────────────────────
+// The SDK returns rich, fully-typed Medusa v2 entities; the UI only needs the
+// slim OmniCart shapes above. These map one to the other (no `any`, no casts).
+
+/** Structural subset shared by cart + order line items. */
+interface LineItemLike {
+  id: string;
+  title: string;
+  quantity: number;
+  unit_price: number;
+  thumbnail?: string | null;
+  variant_id?: string;
+  variant_title?: string;
+  product_title?: string;
 }
 
-/**
- * Apply a coupon/promo code to a cart using the OmniCart (Medusa v2) promotions
- * API, via the Worker proxy:
- *
- *   POST /api/omnicart/carts/:id/promotions   body: { promo_codes: [code] }
- *
- * The proxy forwards to `${OMNICART_BACKEND_URL}/store/carts/:id/promotions`
- * with the publishable key attached server-side. The backend re-validates the
- * code and re-prices the cart, so the returned cart's `promotions[]` and
- * `discount_total`/`total` are authoritative (anti-tamper).
- *
- * Ref: docs.medusajs.com/resources/storefront-development/cart/manage-promotions
- */
-export async function applyDiscount(cartId: string, code: string): Promise<DiscountResult> {
-  try {
-    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}/store/carts/${encodeURIComponent(cartId)}/promotions`;
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (OMNICART_PUBLISHABLE_KEY) {
-      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
-    }
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ promo_codes: [code] }),
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      cart?: OmniCart;
-      message?: string;
-      error?: string;
-    };
-    if (!res.ok) {
-      return { ok: false, error: json.message || json.error || "That code isn’t valid." };
-    }
-    return { ok: true, cart: json.cart };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Could not apply code." };
-  }
+function toLineItem(li: LineItemLike): OmniCartLineItem {
+  return {
+    id: li.id,
+    title: li.title,
+    quantity: li.quantity,
+    unit_price: li.unit_price,
+    thumbnail: li.thumbnail ?? null,
+    variant: {
+      id: li.variant_id ?? li.id,
+      title: li.variant_title ?? li.product_title ?? li.title,
+    },
+  };
 }
 
-/**
- * Remove a previously applied promotion (coupon) code. In Medusa v2 the code is
- * passed in the request body (an array), NOT as a path parameter:
- *
- *   DELETE /api/omnicart/carts/:id/promotions   body: { promo_codes: [code] }
- */
-export async function removeDiscount(cartId: string, code: string): Promise<DiscountResult> {
-  try {
-    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}/store/carts/${encodeURIComponent(cartId)}/promotions`;
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (OMNICART_PUBLISHABLE_KEY) {
-      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
-    }
-    const res = await fetch(url, {
-      method: "DELETE",
-      headers,
-      body: JSON.stringify({ promo_codes: [code] }),
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      cart?: OmniCart;
-      message?: string;
-      error?: string;
-    };
-    if (!res.ok) {
-      return { ok: false, error: json.message || json.error || "Could not remove code." };
-    }
-    return { ok: true, cart: json.cart };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Could not remove code." };
-  }
+function toAddress(a: HttpTypes.StoreCartAddress): OmniCartAddress {
+  return {
+    first_name: a.first_name ?? undefined,
+    last_name: a.last_name ?? undefined,
+    phone: a.phone ?? undefined,
+    address_1: a.address_1 ?? undefined,
+    address_2: a.address_2 ?? undefined,
+    company: a.company ?? undefined,
+    postal_code: a.postal_code ?? undefined,
+    city: a.city ?? undefined,
+    province: a.province ?? undefined,
+    country_code: a.country_code ?? undefined,
+  };
 }
 
-// ── OmniCart (Medusa v2) cart lifecycle ──────────────────────────────────────
-//
-// The functions below wrap the v2 Store API cart lifecycle used by the express
-// checkout. Every call goes through the Worker proxy (`/api/omnicart/*` →
-// `${OMNICART_BACKEND_URL}/store/*`), which attaches the publishable key
-// server-side. The backend is always the source of truth for pricing and
-// inventory (anti-tamper).
-//
-// When no backend is configured, the proxy short-circuits with
-// `503 { demo: true }` so the page can fall back to its in-template demo state.
-// Every helper surfaces that as `{ ok: false, demo: true }` (never an error
-// toast) so the caller can branch cleanly.
-//
-// Endpoint map (all relative to the proxy base `/api/omnicart`, i.e. `/store`):
-//   POST   /carts                                   { region_id }            -> { cart }
-//   GET    /carts/:id                                                        -> { cart }
-//   POST   /carts/:id/line-items                     { variant_id, quantity } -> { cart }
-//   POST   /carts/:id/line-items/:line_id            { quantity }             -> { cart }
-//   DELETE /carts/:id/line-items/:line_id                                     -> { parent }
-//   POST   /carts/:id                                { email, *_address }     -> { cart }
-//   GET    /shipping-options?cart_id=:id                                      -> { shipping_options }
-//   POST   /carts/:id/shipping-methods               { option_id, data }      -> { cart }
-//   GET    /payment-providers?region_id=:rid                                  -> { payment_providers }
-//   POST   /payment-collections                      { cart_id }              -> { payment_collection }
-//   POST   /payment-collections/:id/payment-sessions { provider_id }          -> { payment_collection }
-//   POST   /carts/:id/complete                                                -> { type, order? , cart?, error? }
-// Ref: docs.medusajs.com/resources/storefront-development/guides/express-checkout
+function toPromotion(p: HttpTypes.StoreCartPromotion): OmniCartPromotion {
+  return { id: p.id ?? "", code: p.code ?? undefined, is_automatic: p.is_automatic ?? undefined };
+}
+
+function toPaymentSession(s: HttpTypes.StorePaymentSession): OmniPaymentSession {
+  return {
+    id: s.id,
+    provider_id: s.provider_id,
+    status: s.status,
+    data: s.data as Record<string, unknown> & { client_secret?: string },
+  };
+}
+
+function toPaymentCollection(pc: HttpTypes.StorePaymentCollection): OmniCartPaymentCollection {
+  return {
+    id: pc.id,
+    amount: pc.amount,
+    currency_code: pc.currency_code,
+    payment_sessions: (pc.payment_sessions ?? []).map(toPaymentSession),
+  };
+}
+
+function toCart(c: HttpTypes.StoreCart): OmniCart {
+  return {
+    id: c.id,
+    email: c.email ?? null,
+    region_id: c.region_id ?? undefined,
+    currency_code: c.currency_code,
+    items: (c.items ?? []).map(toLineItem),
+    subtotal: c.subtotal,
+    shipping_total: c.shipping_total,
+    tax_total: c.tax_total,
+    discount_total: c.discount_total,
+    total: c.total,
+    promotions: (c.promotions ?? []).map(toPromotion),
+    shipping_address: c.shipping_address ? toAddress(c.shipping_address) : null,
+    payment_collection: c.payment_collection ? toPaymentCollection(c.payment_collection) : null,
+  };
+}
+
+function toOrder(o: HttpTypes.StoreOrder): OmniOrder {
+  return {
+    id: o.id,
+    display_id: o.display_id,
+    email: o.email ?? undefined,
+    currency_code: o.currency_code,
+    items: (o.items ?? []).map(toLineItem),
+    subtotal: o.subtotal,
+    shipping_total: o.shipping_total,
+    tax_total: o.tax_total,
+    discount_total: o.discount_total,
+    total: o.total,
+    shipping_address: o.shipping_address ? toAddress(o.shipping_address) : null,
+  };
+}
+
+// ── Result envelopes ─────────────────────────────────────────────────────────
 
 /**
  * Generic result for a v2 lifecycle call. `ok` indicates success; `demo` is
- * set when the backend isn't configured (the proxy returned `503 { demo:true }`)
+ * set when the backend isn't configured (proxy mode + the Worker returned 503)
  * so the caller should use its demo fallback rather than show an error.
  */
 export interface BackendResult<T> {
@@ -286,212 +303,15 @@ export interface BackendResult<T> {
   error?: string;
 }
 
-const seg = (s: string) => encodeURIComponent(s);
-
-/**
- * Core request helper for the v2 lifecycle. Performs the fetch, decodes the
- * `503 { demo: true }` signal, and normalizes errors. `pick` maps the decoded
- * JSON body to the value the caller wants (e.g. `(j) => j.cart`).
- */
-async function omniRequest<T>(
-  path: string,
-  init: RequestInit,
-  pick: (json: Record<string, unknown>) => T | undefined,
-  fallbackError: string,
-): Promise<BackendResult<T>> {
-  try {
-    const cleanPath = path.startsWith('/store') ? path : `/store${path}`;
-    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}${cleanPath}`;
-    
-    const headers: Record<string, string> = { 
-      "content-type": "application/json", 
-      ...(init.headers || {}) 
-    };
-    if (OMNICART_PUBLISHABLE_KEY) {
-      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
-    }
-
-    const res = await fetch(url, {
-      ...init,
-      headers,
-    });
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
-      demo?: boolean;
-      message?: string;
-      error?: string | { message?: string };
-    };
-    // No backend wired: the backend returns 503 or we fallback if empty.
-    if (res.status === 503 && json.demo) return { ok: false, demo: true };
-    if (!res.ok) {
-      const errMsg =
-        typeof json.error === "object" ? json.error?.message : (json.error as string | undefined);
-      return { ok: false, error: json.message || errMsg || fallbackError };
-    }
-    return { ok: true, data: pick(json) };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : fallbackError };
-  }
-}
-
-/** Create a new cart in a region. POST /carts { region_id } -> { cart }. */
-export function createCart(regionId?: string): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts`,
-    { method: "POST", body: JSON.stringify(regionId ? { region_id: regionId } : {}) },
-    (j) => j.cart as OmniCart | undefined,
-    "Could not create cart.",
-  );
-}
-
-/** Retrieve a cart by id. GET /carts/:id -> { cart }. */
-export function retrieveCart(cartId: string): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts/${seg(cartId)}`,
-    { method: "GET" },
-    (j) => j.cart as OmniCart | undefined,
-    "Could not load cart.",
-  );
-}
-
-/** Add a variant to the cart. POST /carts/:id/line-items -> { cart }. */
-export function addLineItem(
-  cartId: string,
-  variantId: string,
-  quantity: number,
-): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts/${seg(cartId)}/line-items`,
-    { method: "POST", body: JSON.stringify({ variant_id: variantId, quantity }) },
-    (j) => j.cart as OmniCart | undefined,
-    "Could not add item.",
-  );
-}
-
-/** Update a line item's quantity. POST /carts/:id/line-items/:line_id -> { cart }. */
-export function updateLineItem(
-  cartId: string,
-  lineId: string,
-  quantity: number,
-): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts/${seg(cartId)}/line-items/${seg(lineId)}`,
-    { method: "POST", body: JSON.stringify({ quantity }) },
-    (j) => j.cart as OmniCart | undefined,
-    "Could not update item.",
-  );
-}
-
-/**
- * Remove a line item. DELETE /carts/:id/line-items/:line_id. NOTE: in v2 the
- * delete response returns the updated cart under the `parent` field, not `cart`.
- */
-export function removeLineItem(
-  cartId: string,
-  lineId: string,
-): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts/${seg(cartId)}/line-items/${seg(lineId)}`,
-    { method: "DELETE" },
-    (j) => (j.parent as OmniCart | undefined) ?? (j.cart as OmniCart | undefined),
-    "Could not remove item.",
-  );
-}
-
-/**
- * Set the customer email + shipping/billing address on the cart.
- * POST /carts/:id { email?, shipping_address?, billing_address? } -> { cart }.
- */
-export function updateCartContact(
-  cartId: string,
-  data: { email?: string; shipping_address?: OmniCartAddress; billing_address?: OmniCartAddress },
-): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts/${seg(cartId)}`,
-    { method: "POST", body: JSON.stringify(data) },
-    (j) => j.cart as OmniCart | undefined,
-    "Could not save your details.",
-  );
-}
-
-/**
- * List shipping options available for the cart.
- * GET /shipping-options?cart_id=:id -> { shipping_options }.
- */
-export function listShippingOptions(
-  cartId: string,
-): Promise<BackendResult<OmniShippingOption[]>> {
-  return omniRequest<OmniShippingOption[]>(
-    `/shipping-options?cart_id=${seg(cartId)}`,
-    { method: "GET" },
-    (j) => (j.shipping_options as OmniShippingOption[] | undefined) ?? [],
-    "Could not load shipping options.",
-  );
-}
-
-/**
- * Add the chosen shipping method to the cart.
- * POST /carts/:id/shipping-methods { option_id, data } -> { cart }.
- * `data` carries fulfillment-provider-specific payload (usually empty).
- */
-export function addShippingMethod(
-  cartId: string,
-  optionId: string,
-  data: Record<string, unknown> = {},
-): Promise<BackendResult<OmniCart>> {
-  return omniRequest<OmniCart>(
-    `/carts/${seg(cartId)}/shipping-methods`,
-    { method: "POST", body: JSON.stringify({ option_id: optionId, data }) },
-    (j) => j.cart as OmniCart | undefined,
-    "Could not set shipping method.",
-  );
-}
-
-/**
- * List payment providers for a region.
- * GET /payment-providers?region_id=:rid -> { payment_providers }.
- */
-export function listPaymentProviders(
-  regionId: string,
-): Promise<BackendResult<OmniPaymentProvider[]>> {
-  return omniRequest<OmniPaymentProvider[]>(
-    `/payment-providers?region_id=${seg(regionId)}`,
-    { method: "GET" },
-    (j) => (j.payment_providers as OmniPaymentProvider[] | undefined) ?? [],
-    "Could not load payment methods.",
-  );
-}
-
-/**
- * Create a payment collection for the cart.
- * POST /payment-collections { cart_id } -> { payment_collection }.
- */
-export function createPaymentCollection(
-  cartId: string,
-): Promise<BackendResult<OmniCartPaymentCollection>> {
-  return omniRequest<OmniCartPaymentCollection>(
-    `/payment-collections`,
-    { method: "POST", body: JSON.stringify({ cart_id: cartId }) },
-    (j) => j.payment_collection as OmniCartPaymentCollection | undefined,
-    "Could not start payment.",
-  );
-}
-
-/**
- * Initialize a payment session within a payment collection.
- * POST /payment-collections/:id/payment-sessions { provider_id }
- *   -> { payment_collection } (with the initialized session, incl. any
- *      provider `client_secret` under session.data for on-page confirmation).
- */
-export function initPaymentSession(
-  paymentCollectionId: string,
-  providerId: string,
-): Promise<BackendResult<OmniCartPaymentCollection>> {
-  return omniRequest<OmniCartPaymentCollection>(
-    `/payment-collections/${seg(paymentCollectionId)}/payment-sessions`,
-    { method: "POST", body: JSON.stringify({ provider_id: providerId }) },
-    (j) => j.payment_collection as OmniCartPaymentCollection | undefined,
-    "Could not initialize payment.",
-  );
+/** Result of applying/removing a promotion (coupon) code to a cart. */
+export interface DiscountResult {
+  ok: boolean;
+  /** The updated cart (when the backend is wired). */
+  cart?: OmniCart;
+  /** True when no backend is wired (demo fallback). */
+  demo?: boolean;
+  /** Human-readable error (e.g. invalid/expired code) when `ok` is false. */
+  error?: string;
 }
 
 /** Result of completing a cart: either a placed order, or a cart-level error. */
@@ -506,34 +326,221 @@ export interface CompleteResult {
 }
 
 /**
- * Complete the cart and place the order.
- * POST /carts/:id/complete -> on success `{ type: "order", order }`; on a
- * recoverable failure `{ type: "cart", error, cart }`.
+ * Map a thrown SDK error to the demo signal or a normalized message. In proxy
+ * mode a 503 means "no backend wired" (the Worker's demo signal); otherwise it
+ * is a genuine backend error.
  */
+function isDemoError(e: unknown): boolean {
+  return PROXY_MODE && e instanceof FetchError && e.status === 503;
+}
+
+function errorMessage(e: unknown, fallback: string): string {
+  if (e instanceof FetchError) return e.message || fallback;
+  return e instanceof Error ? e.message : fallback;
+}
+
+// ── OmniCart (Medusa v2) cart lifecycle (official js-sdk) ─────────────────────
+
+/** Create a new cart in a region. */
+export async function createCart(regionId?: string): Promise<BackendResult<OmniCart>> {
+  try {
+    const { cart } = await client().store.cart.create(regionId ? { region_id: regionId } : {});
+    return { ok: true, data: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not create cart.") };
+  }
+}
+
+/** Retrieve a cart by id. */
+export async function retrieveCart(cartId: string): Promise<BackendResult<OmniCart>> {
+  try {
+    const { cart } = await client().store.cart.retrieve(cartId);
+    return { ok: true, data: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not load cart.") };
+  }
+}
+
+/** Add a variant to the cart. */
+export async function addLineItem(
+  cartId: string,
+  variantId: string,
+  quantity: number,
+): Promise<BackendResult<OmniCart>> {
+  try {
+    const { cart } = await client().store.cart.createLineItem(cartId, {
+      variant_id: variantId,
+      quantity,
+    });
+    return { ok: true, data: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not add item.") };
+  }
+}
+
+/** Update a line item's quantity. */
+export async function updateLineItem(
+  cartId: string,
+  lineId: string,
+  quantity: number,
+): Promise<BackendResult<OmniCart>> {
+  try {
+    const { cart } = await client().store.cart.updateLineItem(cartId, lineId, { quantity });
+    return { ok: true, data: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not update item.") };
+  }
+}
+
+/** Remove a line item. The v2 delete response returns the updated cart as `parent`. */
+export async function removeLineItem(
+  cartId: string,
+  lineId: string,
+): Promise<BackendResult<OmniCart>> {
+  try {
+    const res = await client().store.cart.deleteLineItem(cartId, lineId);
+    return { ok: true, data: res.parent ? toCart(res.parent) : undefined };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not remove item.") };
+  }
+}
+
+/** Set the customer email + shipping/billing address on the cart. */
+export async function updateCartContact(
+  cartId: string,
+  data: { email?: string; shipping_address?: OmniCartAddress; billing_address?: OmniCartAddress },
+): Promise<BackendResult<OmniCart>> {
+  try {
+    const { cart } = await client().store.cart.update(cartId, data);
+    return { ok: true, data: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not save your details.") };
+  }
+}
+
+/** List shipping options available for the cart. */
+export async function listShippingOptions(
+  cartId: string,
+): Promise<BackendResult<OmniShippingOption[]>> {
+  try {
+    const { shipping_options } = await client().store.fulfillment.listCartOptions({ cart_id: cartId });
+    const options: OmniShippingOption[] = (shipping_options ?? []).map((o) => ({
+      id: o.id,
+      name: o.name,
+      amount: o.amount,
+      price_type: o.price_type === "calculated" ? "calculated" : "flat",
+    }));
+    return { ok: true, data: options };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not load shipping options.") };
+  }
+}
+
+/** Add the chosen shipping method to the cart. */
+export async function addShippingMethod(
+  cartId: string,
+  optionId: string,
+  data: Record<string, unknown> = {},
+): Promise<BackendResult<OmniCart>> {
+  try {
+    const { cart } = await client().store.cart.addShippingMethod(cartId, {
+      option_id: optionId,
+      data,
+    });
+    return { ok: true, data: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not set shipping method.") };
+  }
+}
+
+/** List payment providers for a region. */
+export async function listPaymentProviders(
+  regionId: string,
+): Promise<BackendResult<OmniPaymentProvider[]>> {
+  try {
+    const { payment_providers } = await client().store.payment.listPaymentProviders({
+      region_id: regionId,
+    });
+    const providers: OmniPaymentProvider[] = (payment_providers ?? []).map((p) => ({
+      id: p.id,
+      is_enabled: true,
+    }));
+    return { ok: true, data: providers };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not load payment methods.") };
+  }
+}
+
+/**
+ * Initialize a card payment session for the cart and return the payment
+ * collection (with any provider `client_secret` for on-page confirmation).
+ *
+ * In Medusa v2 the js-sdk folds "create payment collection" and "initialize
+ * session" into a single `initiatePaymentSession(cart, { provider_id })` call,
+ * so we retrieve the cart, initiate the session, and map the result.
+ */
+export async function initiateOmniPaymentSession(
+  cartId: string,
+  providerId: string,
+): Promise<BackendResult<OmniCartPaymentCollection>> {
+  try {
+    const { cart } = await client().store.cart.retrieve(cartId);
+    const { payment_collection } = await client().store.payment.initiatePaymentSession(cart, {
+      provider_id: providerId,
+    });
+    return { ok: true, data: toPaymentCollection(payment_collection) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not initialize payment.") };
+  }
+}
+
+/** Complete the cart and place the order. */
 export async function completeCart(cartId: string): Promise<CompleteResult> {
   try {
-    const url = `${OMNICART_BACKEND_URL.replace(/\/$/, '')}/store/carts/${seg(cartId)}/complete`;
-    const headers: Record<string, string> = { "content-type": "application/json" };
-    if (OMNICART_PUBLISHABLE_KEY) {
-      headers["x-publishable-api-key"] = OMNICART_PUBLISHABLE_KEY;
-    }
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-    });
-    const json = (await res.json().catch(() => ({}))) as {
-      type?: "order" | "cart";
-      order?: OmniOrder;
-      error?: string | { message?: string };
-      message?: string;
-      demo?: boolean;
-    };
-    if (res.status === 503 && json.demo) return { ok: false, demo: true };
-    if (json.type === "order" && json.order) return { ok: true, order: json.order };
-    const errMsg =
-      typeof json.error === "object" ? json.error?.message : (json.error as string | undefined);
-    return { ok: false, error: json.message || errMsg || "We could not complete your order." };
+    const res = await client().store.cart.complete(cartId);
+    if (res.type === "order") return { ok: true, order: toOrder(res.order) };
+    return { ok: false, error: res.error?.message || "We could not complete your order." };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "We could not complete your order." };
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "We could not complete your order.") };
+  }
+}
+
+/**
+ * Apply a coupon/promo code to a cart using the OmniCart (Medusa v2) promotions
+ * API. The backend re-validates the code and re-prices the cart, so the returned
+ * cart's `promotions[]` and `discount_total`/`total` are authoritative
+ * (anti-tamper).
+ *
+ * Ref: docs.medusajs.com/resources/storefront-development/cart/manage-promotions
+ */
+export async function applyDiscount(cartId: string, code: string): Promise<DiscountResult> {
+  try {
+    const { cart } = await client().store.cart.addPromotions(cartId, { promo_codes: [code] });
+    return { ok: true, cart: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "That code isn’t valid.") };
+  }
+}
+
+/** Remove a previously applied promotion (coupon) code. */
+export async function removeDiscount(cartId: string, code: string): Promise<DiscountResult> {
+  try {
+    const { cart } = await client().store.cart.removePromotions(cartId, { promo_codes: [code] });
+    return { ok: true, cart: toCart(cart) };
+  } catch (e) {
+    if (isDemoError(e)) return { ok: false, demo: true };
+    return { ok: false, error: errorMessage(e, "Could not remove code.") };
   }
 }

@@ -16,7 +16,7 @@ export interface ProductContent {
   specList?: Array<{ label: string; value: string }>
   bulletFeatures?: string[]
   includedItems?: string[]
-  testimonials?: Array<{ quote: string; name: string; role?: string }>
+  testimonials?: Array<{ author: string; text: string; title?: string; rating?: number }>
   heroVideoUrl?: string
   faqCtaImage?: string
 }
@@ -37,7 +37,7 @@ type GeneratedEntry = {
 
 const GENERATED_CONTENT: Record<string, ProductContent> = Object.fromEntries(
   Object.entries(SHOPIFY_CONTENT).map(([handle, entry]) => {
-    const generated = entry as GeneratedEntry
+    const generated = entry as unknown as GeneratedEntry
     return [
       handle,
       {

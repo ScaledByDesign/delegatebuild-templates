@@ -2,7 +2,7 @@
 
 This template generates a complete **OmniCart Headless Storefront**. It connects directly to the OmniCart commerce backend using the client SDK, managing product discovery, variants, cart operations, customer profiles, and checkout entirely client-side.
 
-> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of the **Medusa** commerce framework (`@medusajs/js-sdk`). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
+> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of **Medusa v2** using the official storefront SDK (`@medusajs/js-sdk`), which is already declared in `package.json` — do NOT run `bun add`/`npm install` for it. NEVER install `@medusajs/medusa-js`: that is the deprecated Medusa **v1** client, it is incompatible with this v2 storefront, and the version the build may guess does not exist (the install will fail). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
 
 ## Core Features and Page Routes
 

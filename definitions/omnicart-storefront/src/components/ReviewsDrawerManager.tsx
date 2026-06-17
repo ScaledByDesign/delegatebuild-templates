@@ -207,9 +207,9 @@ function useYotpoProductData(): YotpoProductData {
 
     // Try to get the Shopify product ID from global state (set by ProductDetail)
     const getYotpoData = () => {
-      const shopifyId = (window as any).__vnsh_yotpo_product_id;
-      const productName = (window as any).__vnsh_yotpo_product_name;
-      const productUrl = (window as any).__vnsh_yotpo_product_url;
+      const shopifyId = window.__vnsh_yotpo_product_id;
+      const productName = window.__vnsh_yotpo_product_name;
+      const productUrl = window.__vnsh_yotpo_product_url;
 
       if (shopifyId) {
         console.log('📦 Got Shopify product ID from ProductDetail:', shopifyId);
@@ -364,16 +364,16 @@ export default function ReviewsDrawerManager() {
 
       // Trigger Yotpo V3 to load reviews for this product
       setTimeout(() => {
-        const yotpoWidgetsContainer = (window as any).yotpoWidgetsContainer;
+        const yotpoWidgetsContainer = window.yotpoWidgetsContainer;
         if (yotpoWidgetsContainer?.initWidgets) {
           console.log('🔄 Initializing Yotpo V3 widgets for product:', yotpoData.productId);
           yotpoWidgetsContainer.initWidgets();
-        } else if ((window as any).yotpo) {
+        } else if (window.yotpo) {
           console.log('🔄 Refreshing Yotpo widgets for product:', yotpoData.productId);
-          if (typeof (window as any).yotpo.refreshWidgets === 'function') {
-            (window as any).yotpo.refreshWidgets();
-          } else if (typeof (window as any).yotpo.initWidgets === 'function') {
-            (window as any).yotpo.initWidgets();
+          if (typeof window.yotpo.refreshWidgets === 'function') {
+            window.yotpo.refreshWidgets();
+          } else if (typeof window.yotpo.initWidgets === 'function') {
+            window.yotpo.initWidgets();
           }
         } else {
           console.log('⏳ Yotpo not yet loaded, will refresh when drawer opens');
@@ -444,7 +444,7 @@ export default function ReviewsDrawerManager() {
       console.log('Waiting for Yotpo V3 loader...');
 
       // Check if Yotpo is already available
-      if ((window as any).yotpoLoaded) {
+      if (window.yotpoLoaded) {
         console.log('Yotpo already loaded');
         callback?.();
         return;
@@ -455,9 +455,9 @@ export default function ReviewsDrawerManager() {
       const maxAttempts = 50; // 5 seconds total (50 * 100ms)
 
       const checkYotpo = () => {
-        if ((window as any).yotpoWidgetsContainer || (window as any).yotpo) {
+        if (window.yotpoWidgetsContainer || window.yotpo) {
           console.log('Yotpo V3 loader available');
-          (window as any).yotpoLoaded = true;
+          window.yotpoLoaded = true;
           callback?.();
           return;
         }
@@ -467,7 +467,7 @@ export default function ReviewsDrawerManager() {
           setTimeout(checkYotpo, 100);
         } else {
           console.warn('Yotpo V3 loader timeout - loader script may not have loaded from index.html');
-          (window as any).yotpoLoaded = true; // Mark as attempted even if failed
+          window.yotpoLoaded = true; // Mark as attempted even if failed
           callback?.();
         }
       };
@@ -484,8 +484,8 @@ export default function ReviewsDrawerManager() {
         setTimeout(() => {
           open();
           // Let Yotpo handle the page navigation after widgets are loaded
-          if ((window as any).yotpo && (window as any).yotpo.navigate) {
-            (window as any).yotpo.navigate.toPage(parseInt(reviewsPage));
+          if (window.yotpo && window.yotpo.navigate) {
+            (window.yotpo.navigate as unknown as { toPage: (page: number) => void }).toPage(parseInt(reviewsPage));
           }
         }, 100);
       }
@@ -523,17 +523,17 @@ export default function ReviewsDrawerManager() {
       console.log('🔍 Drawer widget data-yotpo-product-id:', widget?.getAttribute('data-yotpo-product-id'));
 
       // Trigger Yotpo V3 widget initialization
-      const yotpoWidgetsContainer = (window as any).yotpoWidgetsContainer;
+      const yotpoWidgetsContainer = window.yotpoWidgetsContainer;
       if (yotpoWidgetsContainer?.initWidgets) {
         console.log('🔄 Initializing Yotpo V3 widgets for drawer');
         yotpoWidgetsContainer.initWidgets();
-      } else if ((window as any).yotpo) {
+      } else if (window.yotpo) {
         console.log('🔄 Refreshing Yotpo widgets for drawer (fallback)');
         // Fallback to legacy method
-        if (typeof (window as any).yotpo.refreshWidgets === 'function') {
-          (window as any).yotpo.refreshWidgets();
-        } else if (typeof (window as any).yotpo.initWidgets === 'function') {
-          (window as any).yotpo.initWidgets();
+        if (typeof window.yotpo.refreshWidgets === 'function') {
+          window.yotpo.refreshWidgets();
+        } else if (typeof window.yotpo.initWidgets === 'function') {
+          window.yotpo.initWidgets();
         }
       } else {
         console.warn('⏳ Yotpo not yet available, widgets may load shortly');

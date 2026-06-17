@@ -19,6 +19,7 @@ import {
   addShippingMethod,
   type OmniCart,
   type OmniCartPromotion,
+  type OmniCartLineItem,
 } from "@/lib/omnicart";
 import {
   DEMO_CART,
@@ -68,6 +69,9 @@ const DEMO_SHIPPING_OPTIONS: ShippingOption[] = [
 // To re-skin: change the values below. Colors are CSS color strings (hex/rgb).
 // `theme` (light) is intentionally the DEFAULT — this is a customer-facing
 // storefront, not a dashboard, so it should not follow the OS dark preference.
+// Exported as the build agent's brand-injection point (not a shared util), so
+// the react-refresh component-only rule does not apply here.
+// eslint-disable-next-line react-refresh/only-export-components
 export const BRAND_THEME = {
   // Primary brand color — drives CTAs, links, focus rings, selected states.
   primaryColor: "#2563eb",
@@ -114,23 +118,97 @@ export const BRAND_THEME = {
  * `demo` branch, and the page stays in self-contained demo mode so the template
  * renders a realistic flow out of the box for every processor.
  */
-function resolveItemsFromConfig(config: any): any[] {
+// ---------------------------------------------------------------------------
+// CHECKOUT CONFIG (resolved from the checkout code)
+// ---------------------------------------------------------------------------
+// The merchant's published checkout config drives which products seed the cart.
+// `/api/omnicart-config` resolves it live from CORE; CONFIG_SNAPSHOT (below) is
+// the baked offline fallback used when CORE is unreachable.
+interface ConfigCombination {
+  id: string;
+  priceId?: string;
+  priceCents?: number;
+  priceOverrideCents?: number;
+  imageUrl?: string | null;
+  optionValueIds: Record<string, string>;
+}
+interface ConfigProduct {
+  id: string;
+  label: string;
+  priceId?: string;
+  priceCents?: number;
+  priceOverrideCents?: number;
+  quantity?: number;
+  imageUrl?: string | null;
+  defaultCombinationId?: string;
+  combinations?: ConfigCombination[];
+}
+interface ConfigOption {
+  id: string;
+  label: string;
+  priceId?: string;
+  priceCents?: number;
+  imageUrl?: string | null;
+  defaultCombinationId?: string;
+  combinations?: ConfigCombination[];
+}
+interface ConfigVariant {
+  quantity: number;
+  label: string;
+  oneTimePrice: number;
+  imageUrl?: string | null;
+  metadata?: { priceId?: string };
+}
+interface ConfigSection {
+  kind: "bundle" | "multi_product" | "product_variations" | "quantity_selector" | string;
+  productName?: string;
+  // bundle
+  packages?: { id: string; products?: ConfigProduct[] }[];
+  defaultPackageId?: string;
+  // multi_product
+  options?: ConfigOption[];
+  defaultOptionId?: string;
+  // product_variations
+  combinations?: ConfigCombination[];
+  defaultCombinationId?: string;
+  // quantity_selector
+  variants?: ConfigVariant[];
+}
+interface CheckoutConfig {
+  sections?: ConfigSection[];
+}
+
+/** Join a combination's option values into a human-facing variant suffix. */
+function comboTitle(combo: ConfigCombination): string {
+  return Object.values(combo.optionValueIds).join(" / ");
+}
+
+/**
+ * BUILD-TIME INJECTABLE: the merchant's resolved checkout config, pulled down
+ * from CORE at generation time and baked in as an OFFLINE FALLBACK. At runtime
+ * the LIVE config (`/api/omnicart-config`) is preferred; if CORE is unreachable
+ * the page seeds the cart from THIS snapshot rather than the generic demo cart.
+ * Leave `null` to fall back to `DEMO_CART`.
+ */
+const CONFIG_SNAPSHOT: CheckoutConfig | null = null;
+
+function resolveItemsFromConfig(config: CheckoutConfig | null): OmniCartLineItem[] {
   if (!config || !Array.isArray(config.sections)) return [];
 
   for (const s of config.sections) {
     if (s.kind === "bundle" && Array.isArray(s.packages) && s.packages.length > 0) {
-      const pkg = s.packages.find((p: any) => p.id === s.defaultPackageId) || s.packages[0];
+      const pkg = s.packages.find((p) => p.id === s.defaultPackageId) || s.packages[0];
       if (pkg && Array.isArray(pkg.products)) {
-        return pkg.products.map((p: any, idx: number) => {
+        return pkg.products.map((p, idx) => {
           let unitPrice = p.priceOverrideCents ?? p.priceCents ?? 0;
           let variantTitle = p.label;
           let variantId = p.priceId || p.id;
           if (Array.isArray(p.combinations) && p.combinations.length > 0) {
-            const combo = p.combinations.find((c: any) => c.id === p.defaultCombinationId) || p.combinations[0];
+            const combo = p.combinations.find((c) => c.id === p.defaultCombinationId) || p.combinations[0];
             if (combo) {
               unitPrice = combo.priceOverrideCents ?? combo.priceCents ?? unitPrice;
               variantId = combo.priceId || combo.id;
-              variantTitle = `${p.label} (${Object.values(combo.optionValueIds).join(" / ")})`;
+              variantTitle = `${p.label} (${comboTitle(combo)})`;
             }
           }
           return {
@@ -146,17 +224,17 @@ function resolveItemsFromConfig(config: any): any[] {
     }
 
     if (s.kind === "multi_product" && Array.isArray(s.options) && s.options.length > 0) {
-      const opt = s.options.find((o: any) => o.id === s.defaultOptionId) || s.options[0];
+      const opt = s.options.find((o) => o.id === s.defaultOptionId) || s.options[0];
       if (opt) {
         let unitPrice = opt.priceCents ?? 0;
         let variantTitle = opt.label;
         let variantId = opt.priceId || opt.id;
         if (Array.isArray(opt.combinations) && opt.combinations.length > 0) {
-          const combo = opt.combinations.find((c: any) => c.id === opt.defaultCombinationId) || opt.combinations[0];
+          const combo = opt.combinations.find((c) => c.id === opt.defaultCombinationId) || opt.combinations[0];
           if (combo) {
             unitPrice = combo.priceOverrideCents ?? combo.priceCents ?? unitPrice;
             variantId = combo.priceId || combo.id;
-            variantTitle = `${opt.label} (${Object.values(combo.optionValueIds).join(" / ")})`;
+            variantTitle = `${opt.label} (${comboTitle(combo)})`;
           }
         }
         return [{
@@ -171,16 +249,15 @@ function resolveItemsFromConfig(config: any): any[] {
     }
 
     if (s.kind === "product_variations" && Array.isArray(s.combinations) && s.combinations.length > 0) {
-      const combo = s.combinations.find((c: any) => c.id === s.defaultCombinationId) || s.combinations[0];
+      const combo = s.combinations.find((c) => c.id === s.defaultCombinationId) || s.combinations[0];
       if (combo) {
-        const title = Object.values(combo.optionValueIds).join(" / ");
         return [{
           id: `item_var_${combo.id}`,
           title: s.productName || "Product",
           quantity: 1,
           unit_price: combo.priceOverrideCents ?? combo.priceCents ?? 0,
           thumbnail: combo.imageUrl || null,
-          variant: { id: combo.priceId || combo.id, title },
+          variant: { id: combo.priceId || combo.id, title: comboTitle(combo) },
         }];
       }
     }
@@ -264,10 +341,10 @@ export function CheckoutPage() {
   const [flowError, setFlowError] = useState<string | null>(null);
   // Stripe publishable key from /api/omnicart-config (empty in demo mode). Used
   const [stripePublishableKey, setStripePublishableKey] = useState<string>(
-    () => (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY) ||
-          (typeof import.meta !== 'undefined' && import.meta.env?.VITE_STRIPE_PUBLIC_KEY) ||
-          (process.env.STRIPE_PUBLISHABLE_KEY) ||
-          ""
+    () =>
+      import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY ||
+      import.meta.env?.VITE_STRIPE_PUBLIC_KEY ||
+      "",
   );
   // PaymentIntent client secret minted by the active payment-class adapter's
   // `initPayment` (or surfaced from an SCA `requires_action`). Null in demo mode
@@ -295,12 +372,19 @@ export function CheckoutPage() {
 
     async function init() {
       let stripePubKey = stripePublishableKey;
-      let resolvedConfig: any = null;
+      let resolvedConfig: CheckoutConfig | null = null;
 
       try {
         const res = await fetch(`/api/omnicart-config?code=${encodeURIComponent(code)}`);
         if (res.ok) {
-          const cfg = await res.json();
+          const cfg = (await res.json()) as {
+            success?: boolean;
+            data?: {
+              theme?: Partial<CheckoutTheme>;
+              stripePublishableKey?: string;
+              config?: CheckoutConfig;
+            };
+          };
           if (cfg.success && cfg.data) {
             if (cfg.data.theme && !cancelled) {
               // Merge the per-checkout theme OVER the injected BRAND_THEME
@@ -322,6 +406,10 @@ export function CheckoutPage() {
       }
 
       if (cancelled) return;
+
+      // CORE unreachable / no live config → use the baked config snapshot so the
+      // cart still seeds the merchant's real products (not just the demo cart).
+      if (!resolvedConfig) resolvedConfig = CONFIG_SNAPSHOT;
 
       // Seed dynamically from config or fall back to DEMO_CART
       let itemsToSeed = DEMO_CART.items;
@@ -377,6 +465,9 @@ export function CheckoutPage() {
     return () => {
       cancelled = true;
     };
+    // Bootstrap runs once per checkout code; stripePublishableKey is read only as
+    // a seed, so it intentionally stays out of the dependency list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
   // Resolve the adapter for the active processor whenever it changes. The
@@ -748,6 +839,14 @@ export function CheckoutPage() {
       const chargeTarget = buildChargeTarget();
       const customer = buildCustomer(demoOrder.email);
 
+      // Stable idempotency key for THIS pay attempt: reused across the SCA retry
+      // below so a 3-D Secure round-trip can't double-charge. A fresh attempt
+      // (user retries after a decline) gets a new key.
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `idem_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
       // The card / wallet was already confirmed on-page by PaymentStep for
       // payment-class processors with a live client secret (the FIRST call,
       // `initPayment`, ran in the prepare effect). Forward the minted
@@ -766,7 +865,7 @@ export function CheckoutPage() {
         cart,
         customer,
         chargeTarget,
-        idempotencyKey: demoOrder.id,
+        idempotencyKey,
       });
 
       // SCA / 3-D Secure: confirm the returned client secret in-browser, then
@@ -783,7 +882,7 @@ export function CheckoutPage() {
           cart,
           customer,
           chargeTarget,
-          idempotencyKey: demoOrder.id,
+          idempotencyKey,
         });
       }
 

@@ -237,7 +237,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
   }, [name, phone, address1, address2, city, state, zip, cartId, isFormComplete]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" aria-busy={isSyncing}>
       {/* Full Name */}
       <div>
         <label htmlFor="full-name" className={labelClassName}>
@@ -260,8 +260,12 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
           className={errors.name ? errorInputClassName : inputClassName}
           placeholder="John Doe"
           autoComplete="name"
+          required
+          aria-required="true"
+          aria-invalid={errors.name ? true : undefined}
+          aria-describedby={errors.name ? 'full-name-error' : undefined}
         />
-        {errors.name && <p className={errorClassName}>{errors.name}</p>}
+        {errors.name && <p id="full-name-error" role="alert" className={errorClassName}>{errors.name}</p>}
       </div>
 
       {/* Address Line 1 */}
@@ -286,8 +290,12 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
           className={errors.address1 ? errorInputClassName : inputClassName}
           placeholder="354 Oyster Point Blvd"
           autoComplete="address-line1"
+          required
+          aria-required="true"
+          aria-invalid={errors.address1 ? true : undefined}
+          aria-describedby={errors.address1 ? 'address-line1-error' : undefined}
         />
-        {errors.address1 && <p className={errorClassName}>{errors.address1}</p>}
+        {errors.address1 && <p id="address-line1-error" role="alert" className={errorClassName}>{errors.address1}</p>}
       </div>
 
       {/* Address Line 2 */}
@@ -332,8 +340,12 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
           className={errors.city ? errorInputClassName : inputClassName}
           placeholder="South San Francisco"
           autoComplete="address-level2"
+          required
+          aria-required="true"
+          aria-invalid={errors.city ? true : undefined}
+          aria-describedby={errors.city ? 'city-error' : undefined}
         />
-        {errors.city && <p className={errorClassName}>{errors.city}</p>}
+        {errors.city && <p id="city-error" role="alert" className={errorClassName}>{errors.city}</p>}
       </div>
 
       {/* State and ZIP in a grid */}
@@ -358,6 +370,10 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
             name="address-level1"
             className={errors.state ? errorInputClassName : inputClassName}
             autoComplete="address-level1"
+            required
+            aria-required="true"
+            aria-invalid={errors.state ? true : undefined}
+            aria-describedby={errors.state ? 'state-error' : undefined}
           >
             <option value="">Select</option>
             {US_STATES.map((s) => (
@@ -366,7 +382,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
               </option>
             ))}
           </select>
-          {errors.state && <p className={errorClassName}>{errors.state}</p>}
+          {errors.state && <p id="state-error" role="alert" className={errorClassName}>{errors.state}</p>}
         </div>
 
         {/* ZIP Code */}
@@ -378,6 +394,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
             id="zip"
             name="postal-code"
             type="text"
+            inputMode="numeric"
             value={zip}
             onChange={(e) => {
               setZip(e.target.value);
@@ -390,8 +407,12 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
             className={errors.zip ? errorInputClassName : inputClassName}
             placeholder="94080"
             autoComplete="postal-code"
+            required
+            aria-required="true"
+            aria-invalid={errors.zip ? true : undefined}
+            aria-describedby={errors.zip ? 'zip-error' : undefined}
           />
-          {errors.zip && <p className={errorClassName}>{errors.zip}</p>}
+          {errors.zip && <p id="zip-error" role="alert" className={errorClassName}>{errors.zip}</p>}
         </div>
       </div>
 
@@ -404,6 +425,7 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
           id="phone"
           name="tel"
           type="tel"
+          inputMode="tel"
           value={phone}
           onChange={(e) => {
             setPhone(e.target.value);
@@ -416,14 +438,18 @@ export const ShippingAddressForm: React.FC<ShippingAddressFormProps> = ({
           className={errors.phone ? errorInputClassName : inputClassName}
           placeholder="(201) 555-0123"
           autoComplete="tel"
+          required
+          aria-required="true"
+          aria-invalid={errors.phone ? true : undefined}
+          aria-describedby={errors.phone ? 'phone-error' : undefined}
         />
-        {errors.phone && <p className={errorClassName}>{errors.phone}</p>}
+        {errors.phone && <p id="phone-error" role="alert" className={errorClassName}>{errors.phone}</p>}
       </div>
 
-      {/* Syncing indicator */}
+      {/* Syncing indicator — announced to assistive tech */}
       {isSyncing && (
-        <div className="text-sm text-gray-500 flex items-center gap-2">
-          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#176326]"></div>
+        <div className="text-sm text-gray-500 flex items-center gap-2" role="status" aria-live="polite">
+          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-[#176326]" aria-hidden="true"></div>
           Calculating tax and shipping...
         </div>
       )}

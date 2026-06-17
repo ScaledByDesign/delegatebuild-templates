@@ -1,10 +1,10 @@
 import type { ProcessorKind } from "./manifest";
 
-/** Result of a direct call. Mirrors `BackendResult<T>` in `@/lib/omnicart`. */
+/** Result of a checkout-proxy call. Mirrors `BackendResult<T>` in `@/lib/omnicart`. */
 export interface ProxyResult<T> {
   ok: boolean;
   data?: T;
-  /** True when no backend is wired. */
+  /** True when no backend is wired (the Worker proxy returned `503 { demo:true }`). */
   demo?: boolean;
   /** HTTP status, when a response was received. */
   httpStatus?: number;
@@ -12,17 +12,20 @@ export interface ProxyResult<T> {
   error?: string;
 }
 
-const getBackendUrl = (kind: ProcessorKind): string => {
-  const isBrowser = typeof window !== 'undefined';
-  if (isBrowser && (window as any)[`VITE_${kind.toUpperCase()}_CHECKOUT_BACKEND_URL`]) {
-    return (window as any)[`VITE_${kind.toUpperCase()}_CHECKOUT_BACKEND_URL`];
-  }
-  const envKey = `VITE_${kind.toUpperCase()}_CHECKOUT_BACKEND_URL`;
-  return import.meta.env[envKey] || "";
+/** Shape every checkout response may carry alongside its processor payload. */
+type CheckoutEnvelope = Record<string, unknown> & {
+  demo?: boolean;
+  message?: string;
+  error?: string | { message?: string };
 };
 
 /**
- * POST a JSON body directly to the backend URL and decode the response.
+ * POST a JSON body to the SAME-ORIGIN Worker checkout proxy
+ * (`/api/checkout/:kind/*`) and decode the response. The Worker owns every
+ * processor credential and forwards to the configured backend server-side, so
+ * no secret or backend URL is ever exposed to the browser. When a processor has
+ * no backend wired, the Worker returns `503 { demo: true }`, which we surface as
+ * `{ ok: false, demo: true }` so the adapter falls back to demo mode.
  */
 export async function checkoutProxy<T>(
   kind: ProcessorKind,
@@ -32,32 +35,21 @@ export async function checkoutProxy<T>(
   fallbackError: string,
   init?: { method?: string; headers?: Record<string, string> },
 ): Promise<ProxyResult<T>> {
-  const backendUrl = getBackendUrl(kind);
-  if (!backendUrl) {
-    // If no backend configured, transparently fall back to demo mode
-    return { ok: false, demo: true, httpStatus: 503 };
-  }
-
-  const url = `${backendUrl.replace(/\/$/, "")}/checkout/${path.replace(/^\//, "")}`;
+  const url = `/api/checkout/${kind}/${path.replace(/^\//, "")}`;
   try {
-    const headers: Record<string, string> = { "content-type": "application/json", ...(init?.headers || {}) };
-    if (kind === 'omnicart') {
-      const pubKey = import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY;
-      if (pubKey) {
-        headers['x-publishable-api-key'] = pubKey;
-      }
-    }
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      accept: "application/json",
+      ...(init?.headers ?? {}),
+    };
 
     const res = await fetch(url, {
       method: init?.method ?? "POST",
       headers,
       ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
-    const json = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
-      demo?: boolean;
-      message?: string;
-      error?: string | { message?: string };
-    };
+    const json = (await res.json().catch(() => ({}))) as CheckoutEnvelope;
+
     if (res.status === 503 && json.demo) {
       return { ok: false, demo: true, httpStatus: 503 };
     }

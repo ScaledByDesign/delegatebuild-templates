@@ -22,8 +22,8 @@ function sendEmailToAttentive(email: string): boolean {
     return false;
   }
 
-  if ((window as any).attentive && typeof (window as any).attentive.analytics?.identify === 'function') {
-    (window as any).attentive.analytics.identify({ email });
+  if (window.attentive && typeof window.attentive.analytics?.identify === 'function') {
+    window.attentive.analytics?.identify({ email });
     console.log('Newsletter: Email captured via Attentive:', email);
     return true;
   }

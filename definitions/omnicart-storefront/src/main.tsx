@@ -40,8 +40,8 @@ window.onerror = function(message, source, lineno, colno, error) {
   }
 
   // Report to GTM/dataLayer
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'javascript_error',
       error_message: String(message),
       error_source: source,
@@ -69,8 +69,8 @@ window.onunhandledrejection = function(event) {
   }
 
   // Report to GTM/dataLayer
-  if ((window as any).dataLayer) {
-    (window as any).dataLayer.push({
+  if (window.dataLayer) {
+    window.dataLayer.push({
       event: 'unhandled_promise_rejection',
       error_message: String(event.reason),
       error_stack: event.reason?.stack?.substring(0, 500),

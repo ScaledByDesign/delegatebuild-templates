@@ -708,7 +708,7 @@ export default function Admin() {
                             </TableCell>
                             <TableCell className="text-right space-x-1">
                               <a
-                                href={`https://vnsh.omnicart.cc/app/products/${product.id}`}
+                                href={`${import.meta.env.VITE_OMNICART_ADMIN_URL || ''}/app/products/${product.id}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title="View in Medusa Admin"

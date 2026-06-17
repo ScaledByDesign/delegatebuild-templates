@@ -4,12 +4,7 @@ import { getAuthHeaders, getCartId } from "../util/cookies"
 import { listCartShippingOptions } from "../../services/medusa/shipping"
 import { listPaymentProviders, initializePaymentSessions, setPaymentSession, authorizePaymentSession } from "../../services/medusa/payment"
 import { mergeAttributionToCart } from "./cart"
-
-// Ensure publishable key is sent with store requests
-const OMNICART_PUBLISHABLE_KEY =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_OMNICART_PUBLISHABLE_KEY) ||
-  (process.env.OMNICART_PUBLISHABLE_KEY) ||
-  'pk_bfeb37dbcbc6e9cd7d9dc3e44a2dc89160c74de9c8cd1d4fb38c88d30cda1d20'
+import { OMNICART_PUBLISHABLE_KEY } from "@/lib/omnicart-config"
 
 const getStoreHeaders = () => ({
   ...getAuthHeaders(),

@@ -307,3 +307,18 @@ export const PullToRefresh: React.FC<PullToRefreshProps> = ({
     </div>
   );
 };
+
+/**
+ * Optional convenience wrapper.
+ *
+ * The primary API of this module is the set of named helpers above
+ * (TouchTarget, Swipeable, MobileDrawer, MobileInfiniteScroll, PullToRefresh).
+ * Some screens instead import the module as a single `MobileOptimizations`
+ * component, so this passthrough is exported as BOTH a named and the default
+ * export: it renders its children unchanged, keeping those imports resolving
+ * (`import MobileOptimizations from '@/components/MobileOptimizations'`,
+ * `import { MobileOptimizations } from ...`, and `<MobileOptimizations>...`).
+ */
+export const MobileOptimizations: React.FC<{ children?: React.ReactNode }> = ({ children }) => <>{children}</>;
+
+export default MobileOptimizations;

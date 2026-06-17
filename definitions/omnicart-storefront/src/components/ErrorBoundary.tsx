@@ -74,8 +74,8 @@ class ErrorBoundary extends Component<Props, State> {
   private reportError(error: Error, errorInfo: ErrorInfo) {
     try {
       // Report to GTM/dataLayer
-      if ((window as any).dataLayer) {
-        (window as any).dataLayer.push({
+      if (window.dataLayer) {
+        window.dataLayer.push({
           event: 'javascript_error',
           error_message: error.message,
           error_name: error.name,
@@ -87,8 +87,8 @@ class ErrorBoundary extends Component<Props, State> {
       }
 
       // Report to CustomerLabs if available
-      if ((window as any).customerlabs?.track) {
-        (window as any).customerlabs.track('javascript_error', {
+      if (window.customerlabs?.track) {
+        window.customerlabs.track('javascript_error', {
           error_message: error.message,
           error_name: error.name,
           page_url: window.location.href,

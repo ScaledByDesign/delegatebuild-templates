@@ -10,6 +10,8 @@ export interface MedusaOrder {
   subtotal: number;
   tax_total: number;
   shipping_total: number;
+  discount_total?: number;
+  metadata?: Record<string, unknown> | null;
   items: Array<{
     id: string;
     title: string;
