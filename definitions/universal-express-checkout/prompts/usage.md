@@ -2,7 +2,7 @@
 
 This template generates a **Universal Express Checkout** storefront. The flow is split across THREE routes that mirror the upw-sendpaylinks headless checkout exactly — `/c/:code` (the public checkout one-pager), `/upsell/:sessionId` (one post-purchase upsell offer per route), and `/success` (the receipt). There is NO homepage / storefront / cart-summary landing: `/` redirects straight into the checkout. The checkout page lives at `src/pages/CheckoutPage.tsx`, each upsell offer at `src/pages/UpsellOfferPage.tsx`, and the receipt at `src/pages/SuccessPage.tsx`, composed of step components in `src/components/checkout/`. What makes it universal: the initial charge is driven by a **processor-agnostic adapter contract** (`src/lib/checkout/`), so the same UI can complete a purchase through Stripe, OmniCart, Konnektive, or Sticky.io. The page auto-updates as you edit.
 
-> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of **Medusa v2** using the official storefront SDK (`@medusajs/js-sdk`). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
+> Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of **Medusa v2** using the official storefront SDK (`@medusajs/js-sdk`), which is already declared in `package.json` — do NOT run `bun add`/`npm install` for it. NEVER install `@medusajs/medusa-js`: that is the deprecated Medusa **v1** client, it is incompatible with this v2 storefront, and the version the build may guess does not exist (the install will fail). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
 
 ## Checkout adapter contract (`src/lib/checkout/`)
 
