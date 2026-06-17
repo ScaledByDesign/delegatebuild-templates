@@ -37,7 +37,18 @@ const createApp = () => {
   });
 
   app.notFound((c) => c.json({ success: false, error: 'Not Found' }, 404));
-  app.onError((err, c) => { console.error(`[ERROR] ${err}`); return c.json({ success: false, error: 'Internal Server Error' }, 500); });
+  app.onError((err, c) => {
+    // Surface the real error (message + stack) instead of a blank "Internal
+    // Server Error" so failures in a generated app are immediately diagnosable
+    // in the browser network tab and worker logs.
+    const detail = err instanceof Error ? (err.stack || err.message) : String(err);
+    console.error(`[ERROR] ${detail}`);
+    return c.json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Internal Server Error',
+      stack: err instanceof Error ? err.stack : undefined,
+    }, 500);
+  });
 
   return app;
 };

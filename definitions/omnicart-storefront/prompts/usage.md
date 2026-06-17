@@ -49,6 +49,14 @@ To maintain storefront stability and ensure production-grade checkout, the core 
 - **Do not attempt to rewrite or modify** `src/components/product/ProductMediaGallery.tsx`, `src/pages/ProductDetail.tsx`, `src/pages/ExpressCheckout.tsx`, or any files under `src/lib/`, `src/hooks/`, or `src/context/`.
 - Focus your modifications on user-facing storefront customisations, such as rewriting the homepage (`src/pages/Index.tsx`), adding marketing sections, adjusting styles, or adding custom landing pages.
 
+## Rebranding Must Keep the App Buildable
+
+A single broken file fails `vite build`, and the whole preview then returns a blank 500 — not just the page you changed. To rebrand safely:
+- **Prefer tokens over rewrites.** Do branding through `tailwind.config.js` (colors, fonts, design tokens), `src/index.css`, and swapping the logo/image assets. This restyles the entire storefront without touching component logic, so it can't break the build.
+- **Every file you output must be complete and compile.** Resolve all imports, never reference a component, hook, or export that does not exist, and keep all existing imports a file still uses. Do not leave half-written files.
+- **Do not add new dependencies.** Use only packages already in `package.json`. A missing dependency breaks the build at deploy.
+- **When editing an existing component** (e.g. `Navbar.tsx`, `Footer.tsx`), change copy/classes/colors in place and keep its imports and exports intact — do not introduce references to things you have not created.
+
 ## Imports, Exports, and Provider Wiring (Do Not Break)
 
 These conventions keep the app booting. Violating them is the most common cause of a blank screen or a runtime `does not provide an export named ...` / `must be used within a Provider` crash.
