@@ -36,9 +36,36 @@ function readEnv(...keys: string[]): string | undefined {
   return undefined;
 }
 
-/** Backend base URL. Browser defaults to the same-origin Worker proxy. */
+/**
+ * Resolve the backend base URL for browser code. A cross-origin absolute URL
+ * (e.g. `https://vnsh.omnicart.cc`) CANNOT be called directly from the browser —
+ * the OmniCart backend does not send `Access-Control-Allow-Origin`, so the
+ * request is blocked by CORS. Browser traffic therefore always routes through
+ * the same-origin Worker proxy (`/api/omnicart`), which forwards server-side and
+ * injects the publishable key. A configured value is only honored when it is
+ * already same-origin or a relative path.
+ */
+function resolveBrowserBackendUrl(): string {
+  const configured = readEnv("VITE_OMNICART_BACKEND_URL", "OMNICART_BACKEND_URL");
+  if (!configured) return "/api/omnicart";
+  if (configured.startsWith("/")) return configured;
+  try {
+    const parsed = new URL(configured, window.location.origin);
+    if (parsed.origin === window.location.origin) {
+      return parsed.pathname.replace(/\/$/, "") || "/api/omnicart";
+    }
+  } catch {
+    // Malformed URL — fall back to the proxy below.
+  }
+  return "/api/omnicart";
+}
+
+/**
+ * Backend base URL. Browser always stays same-origin (the Worker proxy);
+ * Node/build tooling uses the absolute backend URL directly.
+ */
 export const OMNICART_BACKEND_URL: string = isBrowser
-  ? readEnv("VITE_OMNICART_BACKEND_URL") || "/api/omnicart"
+  ? resolveBrowserBackendUrl()
   : readEnv("OMNICART_BACKEND_URL", "VITE_OMNICART_BACKEND_URL") || "";
 
 /**

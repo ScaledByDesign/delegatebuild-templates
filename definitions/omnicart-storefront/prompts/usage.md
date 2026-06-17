@@ -26,9 +26,11 @@ const data = await medusaClient.get<{ products: any[] }>("/store/products", {
 // Manage cart
 const cart = await medusaClient.post<{ cart: any }>("/store/carts");
 ```
-All client API requests use browser fetch and run client-side using these environment configurations:
-- `VITE_OMNICART_BACKEND_URL` — Base URL of the OmniCart commerce server.
-- `VITE_OMNICART_PUBLISHABLE_KEY` — Public publishable API key for the storefront channel.
+Browser requests always go to the **same-origin Worker proxy** at `/api/omnicart`, which forwards them server-side to the real OmniCart backend and injects the publishable key. This is mandatory: the OmniCart backend does not send CORS headers, so calling it directly from the browser (an absolute cross-origin URL) is blocked by the browser. **Do not** set the browser backend URL to an absolute URL like `https://...` and do not call the backend host directly from client code — `src/lib/omnicart-config.ts` already collapses any cross-origin value back to `/api/omnicart`.
+
+The OmniCart connection variables are consumed **server-side** by the Worker proxy (`worker/userRoutes.ts`), not in the browser:
+- `OMNICART_BACKEND_URL` — Base URL of the OmniCart commerce server (Worker binding/secret; server-side only).
+- `OMNICART_PUBLISHABLE_KEY` — Publishable API key the proxy attaches to upstream requests (server-side only).
 
 ## Stripe Payment Integration
 
