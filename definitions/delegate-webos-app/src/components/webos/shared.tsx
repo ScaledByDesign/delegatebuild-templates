@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, AlertCircle, X } from "lucide-react";
+import { Loader2, AlertCircle, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -156,6 +156,190 @@ export function StatusPill({
       <span className="inline-block h-1.5 w-1.5 rounded-full bg-current" />
       {label}
     </span>
+  );
+}
+
+// ── MetricCard ───────────────────────────────────────────────────────────────
+// KPI / stat tile. Mirrors the Delegate ecom/payments MetricCard: a tinted icon
+// square + label + bold value, on a card.
+type Tone = "primary" | "neutral" | "success" | "warning" | "danger" | "info";
+
+const TILE_CLASSES: Record<Tone, string> = {
+  primary: "bg-primary/10 text-primary",
+  neutral: "bg-muted text-muted-foreground",
+  // Semantic status colors are intentional (theme-ok).
+  success: "bg-green-500/10 text-green-600 dark:text-green-400",
+  warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  danger: "bg-destructive/10 text-destructive",
+  info: "bg-primary/10 text-link",
+};
+
+export function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  tone = "primary",
+  testId,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  tone?: Tone;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-start gap-3 rounded-lg border border-border/50 bg-card p-4"
+    >
+      <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-lg", TILE_CLASSES[tone])}>
+        <Icon className="h-4 w-4" />
+      </div>
+      <div className="min-w-0">
+        <p className="mb-0.5 text-fs-2xs text-muted-foreground">{label}</p>
+        <p className="truncate text-fs-xl font-bold leading-tight text-foreground">{value}</p>
+        {hint ? <p className="mt-0.5 text-fs-3xs text-foreground-subtle">{hint}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+// ── FilterTabs ───────────────────────────────────────────────────────────────
+// Segmented filter strip. Active = filled primary; inactive = muted.
+export interface FilterTab {
+  id: string;
+  label: string;
+  count?: number;
+}
+
+export function FilterTabs({
+  tabs,
+  active,
+  onChange,
+  testId,
+}: {
+  tabs: FilterTab[];
+  active: string;
+  onChange: (id: string) => void;
+  testId?: string;
+}) {
+  return (
+    <div data-testid={testId} className="flex items-center gap-1">
+      {tabs.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onChange(t.id)}
+          className={cn(
+            "rounded-md px-2.5 py-1 text-fs-2xs font-medium transition-colors",
+            active === t.id
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted/50 text-muted-foreground hover:bg-muted"
+          )}
+        >
+          {t.label}
+          {typeof t.count === "number" ? (
+            <span className="ml-1 opacity-70">{t.count}</span>
+          ) : null}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── SidebarItem ──────────────────────────────────────────────────────────────
+export function SidebarItem({
+  icon,
+  label,
+  active,
+  onClick,
+  testId,
+}: {
+  icon?: ReactNode;
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+  testId?: string;
+}) {
+  return (
+    <button
+      data-testid={testId}
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-fs-sm transition-colors",
+        active
+          ? "bg-accent font-medium text-foreground"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      )}
+    >
+      {icon}
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
+// ── Section + KV ─────────────────────────────────────────────────────────────
+// Card with a muted header row; KV = label/value detail rows inside it.
+export function Section({
+  icon,
+  title,
+  action,
+  children,
+  className,
+}: {
+  icon?: ReactNode;
+  title: string;
+  action?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("rounded-lg border border-border/50 bg-card", className)}>
+      <div className="flex items-center justify-between gap-2 border-b border-border/40 bg-muted/20 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          {icon ? <span className="text-muted-foreground">{icon}</span> : null}
+          <h3 className="text-fs-2xs font-semibold uppercase tracking-wide text-foreground-subtle">
+            {title}
+          </h3>
+        </div>
+        {action}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function KV({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-border/20 px-4 py-1.5 last:border-0">
+      <span className="text-fs-xs text-muted-foreground">{label}</span>
+      <span className="text-right text-fs-xs text-foreground">{value}</span>
+    </div>
+  );
+}
+
+// ── ListRow ──────────────────────────────────────────────────────────────────
+export function ListRow({
+  children,
+  onClick,
+  testId,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  testId?: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-3 border-b border-border/30 px-4 py-3 last:border-0",
+        onClick && "cursor-pointer transition-colors hover:bg-muted/30"
+      )}
+    >
+      {children}
+    </div>
   );
 }
 

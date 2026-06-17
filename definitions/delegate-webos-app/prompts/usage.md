@@ -34,18 +34,47 @@ run standalone it falls back to the browser's `prefers-color-scheme`.
   see `StatusPill` tones in `src/components/webos/shared.tsx`.
 - **Always check both dark and light.** Light is the contrast-sensitive one.
 
+## App shell layout (match the Delegate ecom/payments apps)
+Generated apps should use the same shell as Delegate's first-party apps (Stripe,
+Shopify, etc.): a left **sidebar** + a **content** column with a thin **toolbar**.
+
+```tsx
+<div data-testid="app-{appId}" className="flex h-full w-full overflow-hidden bg-background text-foreground">
+  <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card sm:flex">
+    <div className="border-b border-border px-4 py-3">{/* brand header */}</div>
+    <nav className="flex min-h-0 flex-1 flex-col">
+      <AppScrollContainer innerClassName="p-2 space-y-0.5">{/* SidebarItem… */}</AppScrollContainer>
+    </nav>
+  </aside>
+  <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <div className="flex items-center justify-between border-b border-border px-4 py-2.5">{/* toolbar */}</div>
+    <AppScrollContainer innerClassName="p-4 space-y-4">{/* MetricCard grid + Section… */}</AppScrollContainer>
+  </div>
+</div>
+```
+
+Spacing rhythm: header `px-4 py-3`, toolbar `px-4 py-2.5`, content `p-4 space-y-4`,
+grids `gap-3`, sidebar nav `p-2 space-y-0.5`.
+
 ## Reuse the WebOS primitives
 Import from `@/components/webos/shared` and `@/components/webos/AppScrollContainer`
 instead of hand-rolling. Available:
 - `AppScrollContainer` — wrap EVERY scrollable area (handles `min-h-0` + WebOS
   scrollbar). Do not use bare `flex-1 overflow-y-auto`.
 - `AppLoadingState`, `EmptyState`, `ErrorBlock` — loading / empty / error states.
-- `SectionHeader` — uppercase section divider.
+- `SidebarItem` — left-nav item (active/inactive styles built in).
+- `MetricCard` — KPI/stat tile (tinted icon + label + bold value; tones:
+  primary/neutral/success/warning/danger/info). Use a `grid gap-3` of these.
+- `FilterTabs` — segmented filter strip (active = filled primary).
+- `Section` + `KV` — card with a muted header row; `KV` = label/value detail rows.
+- `ListRow` — list/table row (`px-4 py-3`, hover when clickable).
+- `SectionHeader` — standalone uppercase section divider (when not using `Section`).
 - `StatusPill` — status chip (tones: neutral/success/warning/danger/info).
 - `WindowDrawer` — window-scoped slide-over (do NOT use a body-portaled sheet).
 - `useConfirm()` → `{ confirm, ConfirmDialog }` — replace `window.confirm()`.
 
-See `src/pages/WebOSHome.tsx` for the canonical app anatomy — copy its structure.
+See `src/pages/WebOSHome.tsx` for the canonical app anatomy (sidebar + toolbar +
+KPI grid + Section/ListRow + drawer) — copy its structure.
 
 ## data-testid
 - Root element: `data-testid="app-{appId}"` (e.g. `app-delegate-webos-app`).
