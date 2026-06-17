@@ -92,6 +92,27 @@ data in **your own** Worker at `worker/index.ts`:
   `wrangler.jsonc` and use `c.env`.
 - On the client, fetch your own relative `/api/*` routes with TanStack Query.
 
+## Access control — PRIVATE by default (keep it secure)
+This app's data API is private: if its URL leaks, outsiders get **403**. Keep it
+that way.
+
+- Every `/api/*` data route is gated in `worker/userRoutes.ts` by `requireAccess`.
+  Add new data routes via `app.use('/api/<name>*', guard)` (or behind the same
+  guard) — never expose data without the guard.
+- On the client, always call your Worker through the `api()` helper / `withAppAuth`
+  (`src/lib/delegate-auth.ts`), which attaches the `X-Delegate-App-Token` the host
+  delivers over the bridge. Do not fetch `/api/*` without it.
+- Auth flows automatically: the Delegate host mints a short-lived token only for
+  an authenticated member of the connected workspace and pushes it into the
+  iframe (`delegate:auth`). The Worker verifies it against
+  `${DELEGATE_BASE_URL}/api/plugins/app-access/verify`. No keys live in the app.
+- **To make the app public** (allow anyone with the URL): set the Worker var
+  `DELEGATE_APP_PUBLIC = "true"` (wrangler `vars`), which makes `requireAccess`
+  skip the token check. Leave it unset/false to stay private.
+- Optional hardening: restrict who can embed the app with a
+  `Content-Security-Policy: frame-ancestors https://delegate.ws https://*.delegate.ws`
+  header (e.g. a `public/_headers` file).
+
 ## AI — use the connected Delegate account (funded waterfall)
 For anything that needs an LLM, do NOT add provider SDKs or API keys. Use the
 bridged client in `src/lib/delegate-ai.ts`, which routes through the Delegate

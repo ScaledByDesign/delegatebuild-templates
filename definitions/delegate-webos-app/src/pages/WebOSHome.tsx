@@ -12,6 +12,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useDelegateAI } from "@/lib/delegate-ai";
+import { withAppAuth } from "@/lib/delegate-auth";
 import { AppScrollContainer } from "@/components/webos/AppScrollContainer";
 import {
   AppLoadingState,
@@ -48,10 +49,17 @@ type View = "overview" | "items";
 type Filter = "all" | "open" | "done";
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
+  // withAppAuth attaches the Delegate-issued access token (private-by-default).
+  const res = await fetch(
+    path,
+    await withAppAuth({
+      ...init,
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    })
+  );
+  if (res.status === 403) {
+    throw new Error("This app is private — open it from inside Delegate.");
+  }
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
   return res.json() as Promise<T>;
 }
