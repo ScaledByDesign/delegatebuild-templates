@@ -11,6 +11,8 @@
   "src/hooks/",
   "src/context/",
   "src/services/",
+  "src/integrations/",
+  "src/types/",
   "src/components/product/",
   "src/components/cart/",
   "src/components/checkout/",

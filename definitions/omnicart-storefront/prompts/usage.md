@@ -4,6 +4,26 @@ This template generates a complete **OmniCart Headless Storefront**. It connects
 
 > Developer note: OmniCart is the whitelabel commerce brand. It is implemented on top of **Medusa v2** using the official storefront SDK (`@medusajs/js-sdk`), which is already declared in `package.json` — do NOT run `bun add`/`npm install` for it. NEVER install `@medusajs/medusa-js`: that is the deprecated Medusa **v1** client, it is incompatible with this v2 storefront, and the version the build may guess does not exist (the install will fail). Keep all generated UI, copy, and component names branded as **OmniCart** - never expose "Medusa" to end users.
 
+## THIS IS A WORKING PRODUCTION STOREFRONT — CHANGE FRONT-END UI ONLY
+
+This template is a 1:1 deployment of a **live, production storefront**. The entire commerce engine is **already built, tested, and working** against the OmniCart (Medusa v2) backend, with credentials injected automatically from the connected workspace. When this app boots it already has a functional catalog, cart, checkout, and account — driven entirely by the API (categories, products, images, prices, currency, sales channels, shipping all come from the OmniCart admin server).
+
+**Your ONLY job is the visual front-end: branding, layout, copy, imagery, and theme.** Do NOT rebuild, "fix", refactor, or re-implement any functionality — it already works.
+
+**NEVER touch (locked, fully functional — editing is blocked and will be discarded):**
+- `src/lib/`, `src/hooks/`, `src/context/`, `src/services/`, `src/integrations/`, `src/types/` — all data, state, and API logic
+- `worker/` — the same-origin proxy and server config
+- The commerce pages/components: `ProductDetail.tsx`, `Cart.tsx`, `ExpressCheckout.tsx`, `CheckoutSuccess.tsx`, cart/checkout/product components
+- `package.json`, `wrangler.jsonc`, `vite.config.ts`, `tailwind.config.js`, `tsconfig*`
+
+**Do NOT** reimplement the cart, write new API/data-fetching code, swap the SDK, add data dependencies, or "wire up" the backend — all of that exists and runs. Assume every commerce feature works; if something looks empty in preview it is a data/credential matter, not a code bug to "fix".
+
+**You MAY edit (the presentation surface):**
+- `src/pages/Index.tsx` (homepage) and new marketing/landing pages
+- Layout/branding components (header, footer, hero, banners, navigation **styling**)
+- `src/index.css` — **rebrand by changing the existing CSS variables** here (`--primary`, `--vnsh-red`, `--vnsh-green`, `--vnsh-dark`, fonts). This is how you recolor the whole site; do NOT invent new Tailwind color tokens.
+- Copy, images, and logo assets under `public/`
+
 ## Core Features and Page Routes
 
 - **Homepage (`src/pages/Index.tsx`)** - Hero banner, featured products, categories carousel, newsletter.
@@ -52,7 +72,7 @@ To maintain storefront stability and ensure production-grade checkout, the core 
 ## Rebranding Must Keep the App Buildable
 
 A single broken file fails `vite build`, and the whole preview then returns a blank 500 — not just the page you changed. To rebrand safely:
-- **Prefer tokens over rewrites.** Do branding through `tailwind.config.js` (colors, fonts, design tokens), `src/index.css`, and swapping the logo/image assets. This restyles the entire storefront without touching component logic, so it can't break the build.
+- **Prefer tokens over rewrites.** Rebrand by editing the CSS design tokens in `src/index.css` (the `:root` variables like `--primary`, `--vnsh-red`, `--vnsh-green`, fonts) and swapping logo/image assets. `tailwind.config.js` is LOCKED and only maps those variables (`hsl(var(--primary))`) — you do not edit it; change the variable values in `src/index.css` instead. This restyles the entire storefront without touching component logic, so it can't break the build.
 - **Define a custom color BEFORE you use its class.** A custom color used in any `bg-*`/`text-*`/`border-*`/`ring-*` class — especially inside an `@apply` in `src/index.css` — only exists if you first add it to `theme.extend.colors` in `tailwind.config.js`. `@apply bg-vanguard-obsidian/80` fails the CSS build with "The `bg-vanguard-obsidian/80` class does not exist" unless `vanguard-obsidian` is defined there. When in doubt, use an arbitrary value (`bg-[#0b0b0f]/80`) or a raw CSS property instead of inventing a token.
 - **Every file you output must be complete and compile.** Resolve all imports, never reference a component, hook, or export that does not exist, and keep all existing imports a file still uses. Do not leave half-written files.
 - **Do not add new dependencies.** Use only packages already in `package.json`. A missing dependency breaks the build at deploy.
