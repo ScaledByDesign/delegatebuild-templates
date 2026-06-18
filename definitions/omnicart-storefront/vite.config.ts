@@ -202,6 +202,20 @@ export default ({ mode }: { mode: string }) => {
       "import.meta.env.VITE_OMNICART_PUBLISHABLE_KEY": JSON.stringify(process.env.OMNICART_PUBLISHABLE_KEY || env.OMNICART_PUBLISHABLE_KEY || ""),
       "import.meta.env.VITE_STRIPE_PUBLIC_KEY": JSON.stringify(process.env.STRIPE_PUBLISHABLE_KEY || env.STRIPE_PUBLISHABLE_KEY || ""),
       "import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY": JSON.stringify(process.env.STRIPE_PUBLISHABLE_KEY || env.STRIPE_PUBLISHABLE_KEY || ""),
+      // Medusa v2 store wiring — region + sales channel are REQUIRED for the
+      // storefront to list products and create a cart; without them the store
+      // renders empty and checkout breaks. The DelegateBuild resolver emits
+      // these canonical MEDUSA_* names from the OmniCart connector creds, so
+      // forward them (and their VITE_ aliases) into the client bundle.
+      "process.env.MEDUSA_ADMIN_URL": JSON.stringify(process.env.MEDUSA_ADMIN_URL || process.env.OMNICART_BACKEND_URL || env.MEDUSA_ADMIN_URL || env.OMNICART_BACKEND_URL || ""),
+      "process.env.MEDUSA_ADMIN_TOKEN": JSON.stringify(process.env.MEDUSA_ADMIN_TOKEN || env.MEDUSA_ADMIN_TOKEN || ""),
+      "process.env.MEDUSA_DEFAULT_REGION_ID": JSON.stringify(process.env.MEDUSA_DEFAULT_REGION_ID || env.MEDUSA_DEFAULT_REGION_ID || ""),
+      "process.env.MEDUSA_SALES_CHANNEL_ID": JSON.stringify(process.env.MEDUSA_SALES_CHANNEL_ID || env.MEDUSA_SALES_CHANNEL_ID || ""),
+      "process.env.MEDUSA_INVENTORY_LOCATION_ID": JSON.stringify(process.env.MEDUSA_INVENTORY_LOCATION_ID || env.MEDUSA_INVENTORY_LOCATION_ID || ""),
+      "process.env.MEDUSA_DEFAULT_COLLECTION_FALLBACK": JSON.stringify(process.env.MEDUSA_DEFAULT_COLLECTION_FALLBACK || env.MEDUSA_DEFAULT_COLLECTION_FALLBACK || ""),
+      "import.meta.env.VITE_MEDUSA_BACKEND_URL": JSON.stringify(process.env.MEDUSA_ADMIN_URL || process.env.OMNICART_BACKEND_URL || env.MEDUSA_ADMIN_URL || env.OMNICART_BACKEND_URL || ""),
+      "import.meta.env.VITE_MEDUSA_PUBLISHABLE_API_KEY": JSON.stringify(process.env.OMNICART_PUBLISHABLE_KEY || env.OMNICART_PUBLISHABLE_KEY || ""),
+      "import.meta.env.VITE_MEDUSA_SALES_CHANNEL_ID": JSON.stringify(process.env.MEDUSA_SALES_CHANNEL_ID || process.env.VITE_MEDUSA_SALES_CHANNEL_ID || env.MEDUSA_SALES_CHANNEL_ID || env.VITE_MEDUSA_SALES_CHANNEL_ID || ""),
       // Supabase — the workspace's connected Supabase integration injects
       // SUPABASE_URL / SUPABASE_ANON_KEY (with NEXT_PUBLIC_* aliases). The
       // storefront client reads VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY,
