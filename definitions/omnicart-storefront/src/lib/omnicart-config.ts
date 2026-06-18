@@ -22,7 +22,19 @@ const isBrowser = typeof window !== "undefined";
 function readEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
     if (typeof window !== "undefined") {
-      const w = (window as unknown as Record<string, unknown>)[key];
+      // The platform injects browser-safe connector values onto the namespaced
+      // `window.__PUBLIC_ENV__` bag (e.g. OMNICART_SALES_CHANNEL_ID, *_REGION_ID),
+      // NOT as bare `window.<KEY>` globals. Check it FIRST so runtime-linked
+      // workspace credentials resolve — otherwise these constants come back empty
+      // and the storefront sends product queries without a sales channel, which
+      // Medusa rejects with HTTP 400 and the product grid renders empty.
+      const publicEnv = (window as unknown as {
+        __PUBLIC_ENV__?: Record<string, unknown>;
+      }).__PUBLIC_ENV__;
+      if (publicEnv) {
+        const pv = publicEnv[key];
+        if (typeof pv === "string" && pv) return pv;
+      }      const w = (window as unknown as Record<string, unknown>)[key];
       if (typeof w === "string" && w) return w;
     }
     if (typeof import.meta !== "undefined" && import.meta.env) {
