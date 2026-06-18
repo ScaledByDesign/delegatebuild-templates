@@ -16,7 +16,7 @@
     "src/services/",
     "src/integrations/supabase/client.ts",
     "src/lib/omnicart-config.ts",
-    "src/lib/medusa-client.ts",
+    "src/lib/omnicart-client.ts",
     "src/lib/sdk.ts",
     "src/pages/ProductDetail.tsx",
     "src/pages/Cart.tsx",

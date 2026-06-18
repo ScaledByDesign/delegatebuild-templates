@@ -10,6 +10,9 @@ export interface OmnicartClientOptions {
 export class OmnicartClient {
   private baseUrl: string
   private publishableKey?: string
+  private requestLog = new Map<string, { count: number; windowStart: number }>()
+  private readonly WINDOW_MS = 10000 // 10 seconds
+  private readonly MAX_REQUESTS_PER_WINDOW = 10 // max 10 identical requests in 10s
 
   constructor() {
     this.baseUrl = OMNICART_BACKEND_URL
@@ -61,6 +64,27 @@ export class OmnicartClient {
       if (queryString) {
         url += `?${queryString}`
       }
+    }
+
+    // Circuit breaker to prevent infinite loop / render hammering
+    const requestKey = `${method}:${url}:${body ? (typeof body === 'string' ? body : JSON.stringify(body)) : ''}`
+    const now = Date.now()
+    const tracker = this.requestLog.get(requestKey)
+
+    if (tracker) {
+      if (now - tracker.windowStart < this.WINDOW_MS) {
+        tracker.count++
+        if (tracker.count > this.MAX_REQUESTS_PER_WINDOW) {
+          const errorMsg = `Circuit breaker triggered: Too many identical requests (${tracker.count}) to "${path}" within ${this.WINDOW_MS / 1000}s. Lower your render/useEffect updates.`
+          console.error(`🚨 ${errorMsg}`)
+          throw new Error(errorMsg)
+        }
+      } else {
+        tracker.count = 1
+        tracker.windowStart = now
+      }
+    } else {
+      this.requestLog.set(requestKey, { count: 1, windowStart: now })
     }
 
     // Prepare headers
