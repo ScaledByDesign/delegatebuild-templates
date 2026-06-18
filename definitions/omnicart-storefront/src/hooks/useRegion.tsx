@@ -22,13 +22,6 @@ export const RegionProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const initRegion = async () => {
       try {
-        // Try to get region from localStorage first
-        const savedRegionId = localStorage.getItem('medusa_region_id');
-        if (savedRegionId && region?.id !== savedRegionId) {
-          // For now, just get default region
-          // In a full implementation, you'd fetch the specific region by ID
-        }
-
         // Get default region
         const defaultRegion = await getDefaultRegion();
         if (defaultRegion) {
@@ -48,7 +41,12 @@ export const RegionProvider = ({ children }: { children: React.ReactNode }) => {
     };
 
     initRegion();
-  }, [toast, region]);
+    // Load the default region once on mount. `region` and `toast` are
+    // intentionally NOT dependencies: the effect calls setRegionState(), so
+    // depending on `region` re-ran it on every successful fetch and caused an
+    // infinite request loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setRegion = (newRegion: OmnicartRegion) => {
     setRegionState(newRegion);
