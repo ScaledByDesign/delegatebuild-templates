@@ -34,7 +34,8 @@ function readEnv(...keys: string[]): string | undefined {
       if (publicEnv) {
         const pv = publicEnv[key];
         if (typeof pv === "string" && pv) return pv;
-      }      const w = (window as unknown as Record<string, unknown>)[key];
+      }
+      const w = (window as unknown as Record<string, unknown>)[key];
       if (typeof w === "string" && w) return w;
     }
     if (typeof import.meta !== "undefined" && import.meta.env) {
@@ -79,6 +80,27 @@ function resolveBrowserBackendUrl(): string {
 export const OMNICART_BACKEND_URL: string = isBrowser
   ? resolveBrowserBackendUrl()
   : readEnv("OMNICART_BACKEND_URL", "VITE_OMNICART_BACKEND_URL") || "";
+
+/**
+ * ABSOLUTE backend base URL for clients that internally call `new URL(baseUrl)`
+ * and therefore reject a relative path — notably the Medusa JS SDK
+ * (`@medusajs/js-sdk`), which is used by the payment-session / checkout flow.
+ *
+ * `OMNICART_BACKEND_URL` is deliberately a same-origin RELATIVE path
+ * (`/api/omnicart`) in the browser so traffic routes through the Worker proxy.
+ * Our hand-written fetch client concatenates strings and is fine with that, but
+ * `new Medusa({ baseUrl: "/api/omnicart" })` throws
+ * "Failed to construct 'URL': Invalid URL" and kills payment initialization.
+ * Prefixing the current origin yields `<origin>/api/omnicart`, which is still
+ * same-origin (proxy routing preserved) AND a valid absolute URL for the SDK.
+ */
+export const OMNICART_SDK_BASE_URL: string = (() => {
+  const base = OMNICART_BACKEND_URL;
+  if (isBrowser && base.startsWith("/")) {
+    return `${window.location.origin}${base}`;
+  }
+  return base;
+})();
 
 /**
  * Publishable key (browser-safe). Empty in the default proxy mode — the Worker

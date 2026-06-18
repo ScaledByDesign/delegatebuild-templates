@@ -7,7 +7,7 @@
 
 import Medusa from '@medusajs/js-sdk'
 import {
-  OMNICART_BACKEND_URL,
+  OMNICART_SDK_BASE_URL,
   OMNICART_PUBLISHABLE_KEY,
   OMNICART_REGION_ID,
   OMNICART_INVENTORY_LOCATION_ID,
@@ -15,8 +15,10 @@ import {
 } from '../omnicart-config'
 
 // Initialize Medusa storefront client (publishable key only; never an admin key).
+// Use the ABSOLUTE base URL — the Medusa SDK calls `new URL(baseUrl)` internally
+// and rejects the same-origin relative proxy path ("/api/omnicart").
 const medusa = new Medusa({
-  baseUrl: OMNICART_BACKEND_URL,
+  baseUrl: OMNICART_SDK_BASE_URL,
   ...(OMNICART_PUBLISHABLE_KEY ? { publishableKey: OMNICART_PUBLISHABLE_KEY } : {}),
 })
 
