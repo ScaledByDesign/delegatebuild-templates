@@ -1,18 +1,26 @@
 # Template Selection Guidelines
 
-Use this template to build a complete, multi-page headless storefront powered by the OmniCart API (Medusa v2). The storefront includes a full collection browser, individual product details, search, catalog navigation, shopping cart drawer/page, complete user account management (loyalty programs, wishlist, order history), a comprehensive multi-step checkout (`/checkout`), and a confirmation/receipt page.
+This template is a customer-facing **OmniCart storefront** — a Next.js (Pages Router) shopfront that renders a product catalog and product detail pages from a headless OmniCart commerce engine over its Store API.
 
-> Internal note (developers only): OmniCart is the whitelabel commerce brand. It is powered under the hood by the **Medusa** commerce framework via the `@medusajs/js-sdk` SDK. All user-facing copy, components, and routes use **OmniCart** naming - "Medusa" is only an internal framework reference and must never surface in generated UI.
+* Use this template when you need:
+  * A branded ecommerce storefront on top of a headless commerce backend
+  * A product catalog grid plus product detail pages, server-rendered for SEO
+  * A starting point for cart, checkout, and account pages on an OmniCart backend
+  * Server-side data fetching against a commerce Store API with a publishable key
+  * A responsive, accessible shopping experience with shadcn/ui components
 
-## When to Use
+* Do not use it for:
+  * Generic landing pages or marketing sites with no commerce backend
+  * Apps that do not talk to an OmniCart / headless commerce engine
+  * Purely static, content-only sites
 
-**Use this template when:**
-- The user requests a full, multi-page e-commerce storefront or shop site (e.g. "Build a storefront", "Create an e-commerce shop", "Build a shopping website").
-- You need deep product catalog browsing (categories, search, product detail pages).
-- You need comprehensive customer account functionality (customer profiles, loyalty accounts, order tracking, returns, wishlists).
-- You need a full checkout experience directly integrated with the storefront pages.
+* Built with:
+  * **Next.js (Pages Router)** for server-rendered, SEO-friendly product pages
+  * **OmniCart Store API** integration (publishable-key header wired in)
+  * **Tailwind CSS** + **shadcn/ui** for accessible, responsive UI
+  * **Lucide Icons** for consistent iconography
+  * **TypeScript** and **ESLint** for type safety and code quality
 
-**Do NOT use this template when:**
-- The user requests a single checkout link / express checkout page with post-purchase upsell steps (use `universal-express-checkout` instead).
-- The application does not require product catalog or shopping cart workflows.
-- Building general SaaS landing pages, presentation slides, or pure database applications.
+* Configuration:
+  * `NEXT_PUBLIC_OMNICART_BACKEND_URL` — base URL of the OmniCart engine
+  * `NEXT_PUBLIC_OMNICART_PUBLISHABLE_KEY` — storefront publishable key

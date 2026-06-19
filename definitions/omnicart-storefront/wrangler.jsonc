@@ -1,32 +1,36 @@
-/**
- * Wrangler config for the OmniCart Storefront template.
- */
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "omnicart-storefront",
-	"main": "worker/index.ts",
-	"compatibility_date": "2025-04-24",
+	"main": ".open-next/worker.js",
+	"compatibility_date": "2025-03-01",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
 	"assets": {
-		"not_found_handling": "single-page-application",
-		"run_worker_first": ["/api/*", "!/api/docs/*"]
+		"binding": "ASSETS",
+		"directory": ".open-next/assets"
 	},
 	"observability": {
 		"enabled": true
 	},
+	/**
+	 * OmniCart storefront configuration.
+	 * These are public (NEXT_PUBLIC_*) values surfaced to the browser at build time.
+	 * Point them at your OmniCart commerce engine and storefront publishable key.
+	 */
 	"vars": {
-		"OMNICART_BACKEND_URL": "",
-		"OMNICART_ADMIN_URL": "",
-		"OMNICART_PUBLISHABLE_KEY": "",
-		"OMNICART_REGION_ID": "",
-		"OMNICART_DEFAULT_REGION_ID": "",
-		"OMNICART_SALES_CHANNEL_ID": "",
-		"OMNICART_INVENTORY_LOCATION_ID": "",
-		"OMNICART_COLLECTION_FALLBACK": "",
-		"OMNICART_ADMIN_TOKEN": "",
-		"OMNICART_UPSELL_RUNTIME_URL": "",
-		"STRIPE_SECRET_KEY": "",
-		"STRIPE_PUBLISHABLE_KEY": "",
-		"STRIPE_PUBLIC_KEY": "",
-		"RESEND_API_KEY": ""
+		"NEXT_PUBLIC_OMNICART_BACKEND_URL": "http://localhost:9000",
+		"NEXT_PUBLIC_OMNICART_PUBLISHABLE_KEY": ""
 	}
+
+	/**
+	 * Smart Placement
+	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 */
+	// "placement": { "mode": "smart" },
+
+	/**
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 */
 }
