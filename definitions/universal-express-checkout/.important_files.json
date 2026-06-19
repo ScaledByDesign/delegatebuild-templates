@@ -8,6 +8,8 @@
   "tailwind.config.js",
   "src/main.tsx",
   "src/lib/omnicart.ts",
+  "src/lib/public-env.ts",
+  "src/lib/stripe/stripe-key.ts",
   "src/lib/checkout/",
   "src/lib/checkout-session-store.ts",
   "src/lib/upsell-flow.ts",

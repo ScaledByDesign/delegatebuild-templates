@@ -1,6 +1,13 @@
 import '@/lib/errorReporter';
+import { hydratePublicEnv } from '@/lib/public-env';
 import { enableMapSet } from "immer";
 enableMapSet();
+
+// Backfill window.__PUBLIC_ENV__ from the Worker's /api/public-env so browser
+// code resolves browser-safe connector values (e.g. STRIPE_PUBLISHABLE_KEY)
+// even when the workspace was linked AFTER the build (values never baked into
+// import.meta.env). Best-effort + idempotent; never blocks app startup.
+hydratePublicEnv();
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import {

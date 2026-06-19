@@ -23,26 +23,16 @@
  */
 import Medusa, { FetchError } from "@medusajs/js-sdk";
 import type { HttpTypes } from "@medusajs/types";
+import { readPublicEnv } from "./public-env";
 
-// Resolve config from the RUNTIME window globals first (the platform injects
-// `window.VITE_*` at deploy, which is how credentials arrive when a workspace is
-// linked AFTER the app was built — build-time `import.meta.env` would be empty in
-// that case), then fall back to build-time `import.meta.env` / `process.env`.
+// Resolve config through the shared public-env resolver (src/lib/public-env.ts),
+// which normalizes across the '' / VITE_ / NEXT_PUBLIC_ prefixes and checks every
+// place a browser-safe value can live: window.__PUBLIC_ENV__ (hydrated from
+// /api/public-env when a workspace is linked AFTER the build), raw window globals,
+// build-time import.meta.env, and process.env. This keeps OmniCart credential
+// resolution identical to the omnicart-storefront template.
 function readEnv(...keys: string[]): string {
-  for (const key of keys) {
-    if (typeof window !== "undefined") {
-      const w = (window as unknown as Record<string, unknown>)[key];
-      if (typeof w === "string" && w) return w;
-    }
-    if (typeof import.meta !== "undefined" && import.meta.env) {
-      const v = (import.meta.env as Record<string, string | undefined>)[key];
-      if (v) return v;
-    }
-    if (typeof process !== "undefined" && process.env && process.env[key]) {
-      return process.env[key] as string;
-    }
-  }
-  return "";
+  return readPublicEnv(...keys) || "";
 }
 
 const CONFIGURED_BACKEND_URL = readEnv("VITE_OMNICART_BACKEND_URL", "OMNICART_BACKEND_URL");

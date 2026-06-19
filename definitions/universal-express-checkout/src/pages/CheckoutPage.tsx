@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ShoppingCart } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
+import { resolveStripePublishableKey } from "@/lib/stripe/stripe-key";
 import { OrderSummary } from "@/components/checkout/OrderSummary";
 import { CartStep } from "@/components/checkout/CartStep";
 import { ShippingStep } from "@/components/checkout/ShippingStep";
@@ -341,10 +342,11 @@ export function CheckoutPage() {
   const [flowError, setFlowError] = useState<string | null>(null);
   // Stripe publishable key from /api/omnicart-config (empty in demo mode). Used
   const [stripePublishableKey, setStripePublishableKey] = useState<string>(
-    () =>
-      import.meta.env?.VITE_STRIPE_PUBLISHABLE_KEY ||
-      import.meta.env?.VITE_STRIPE_PUBLIC_KEY ||
-      "",
+    // Resolve through the shared public-env resolver so the key is found under
+    // whichever name/prefix the host injected (bare / VITE_ / NEXT_PUBLIC_, or
+    // window.__PUBLIC_ENV__ hydrated from /api/public-env). /api/omnicart-config
+    // may still override per-code below.
+    () => resolveStripePublishableKey(),
   );
   // PaymentIntent client secret minted by the active payment-class adapter's
   // `initPayment` (or surfaced from an SCA `requires_action`). Null in demo mode

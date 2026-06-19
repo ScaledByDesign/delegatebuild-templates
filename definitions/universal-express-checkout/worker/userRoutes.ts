@@ -84,6 +84,44 @@ type ProxyCtx = {
   };
 };
 
+// --- Browser-safe env exposure --------------------------------------------
+// Mirrors omnicart-storefront's /api/public-env contract so the universal
+// checkout resolves browser-safe connector values (publishable/public keys,
+// public URLs, region/channel ids) DYNAMICALLY from whatever workspace
+// connectors are bound to THIS deployment. Self-healing: new browser-safe vars
+// flow through with no code change; secret/private/token/password keys are
+// denied by name and NEVER returned.
+const BROWSER_ENV_DENY = /(SECRET|PRIVATE|PASSWORD|SERVICE_ROLE|SECURITY|_TOKEN|ACCESS_TOKEN|API_KEY|CLIENT_SECRET|WEBHOOK_SECRET|ADMIN)/i;
+const BROWSER_ENV_ALLOW = /(PUBLISHABLE_KEY|PUBLIC_KEY|ANON_KEY|_URL$|REGION_ID|SALES_CHANNEL_ID|INVENTORY_LOCATION_ID|COLLECTION_FALLBACK|MERCHANT_ID|ACCOUNT_ID|TEAM_ID|STORE_DOMAIN)/i;
+
+/** True when an env var name is safe to expose to browser code. */
+function isBrowserSafeEnvName(name: string): boolean {
+  if (BROWSER_ENV_DENY.test(name)) return false;
+  return BROWSER_ENV_ALLOW.test(name);
+}
+
+/**
+ * Resolve the first non-empty value for any of the given logical env names,
+ * normalizing across the common '' / VITE_ / NEXT_PUBLIC_ prefixes. Mirrors the
+ * client-side resolver (src/lib/public-env.ts) so the worker and browser agree
+ * on which connector name carries a value regardless of how the host injected
+ * it. Lets a dedicated Stripe connector's STRIPE_PUBLISHABLE_KEY resolve even if
+ * the host wrote it under a prefixed variant.
+ */
+function resolveEnvValue(env: Record<string, unknown>, ...keys: string[]): string {
+  const prefixes = ['', 'VITE_', 'NEXT_PUBLIC_'];
+  for (const key of keys) {
+    const bare = key.replace(/^(VITE_|NEXT_PUBLIC_)/, '');
+    for (const prefix of prefixes) {
+      const v = env[prefix + bare];
+      if (typeof v === 'string' && v) return v;
+    }
+    const exact = env[key];
+    if (typeof exact === 'string' && exact) return exact;
+  }
+  return '';
+}
+
 /** Normalize a backend base URL: trim, ensure an https:// scheme, drop trailing slash. */
 function normalizeBackend(raw: string | undefined): string {
   let backend = (raw || '').trim();
@@ -214,6 +252,22 @@ interface PlatformInitResponse {
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
   // Health/demo route kept from the reference template.
   app.get('/api/test', (c) => c.json({ success: true, data: { name: 'this works' } }));
+
+  // --- Dynamic browser-safe env -------------------------------------------
+  // Expose only the connector values that are safe to ship to the browser so
+  // the frontend resolves credentials dynamically from whatever workspace
+  // connectors are bound to THIS deployment (e.g. when a workspace is linked
+  // AFTER the build and the values were never baked into import.meta.env).
+  // Secret/private/token/password keys are never returned.
+  app.get('/api/public-env', (c) => {
+    const env = c.env as unknown as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(env)) {
+      if (typeof value !== 'string' || value === '') continue;
+      if (isBrowserSafeEnvName(key)) out[key] = value;
+    }
+    return c.json(out);
+  });
 
   // --- Universal checkout proxy (/api/checkout/:kind/*) ----------------------
   // The single entry point every adapter uses. The path's first segment is the
@@ -544,7 +598,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     return c.json({
       success: true,
       data: {
-        stripePublishableKey: env.STRIPE_PUBLISHABLE_KEY || '',
+        stripePublishableKey: resolveEnvValue(
+          env as unknown as Record<string, unknown>,
+          'STRIPE_PUBLISHABLE_KEY',
+          'STRIPE_PUBLIC_KEY',
+        ),
         // The client uses this flag to decide whether to drive the real Flow
         // Builder runtime or fall back to the in-browser demo flow.
         backendConfigured,
