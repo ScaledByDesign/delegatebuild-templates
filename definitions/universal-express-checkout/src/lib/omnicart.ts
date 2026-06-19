@@ -39,6 +39,18 @@ const CONFIGURED_BACKEND_URL = readEnv("VITE_OMNICART_BACKEND_URL", "OMNICART_BA
 const PUBLISHABLE_KEY = readEnv("VITE_OMNICART_PUBLISHABLE_KEY", "OMNICART_PUBLISHABLE_KEY");
 
 /**
+ * Default sales channel id. When a publishable key maps to MULTIPLE sales
+ * channels, Medusa v2 requires the cart-create request to specify which one;
+ * otherwise it rejects with "The Publishable API Key in the header has multiple
+ * associated sales channels." Resolved through the same browser-safe env path
+ * as the omnicart-storefront template. Empty unless configured.
+ */
+const SALES_CHANNEL_ID = readEnv("VITE_OMNICART_SALES_CHANNEL_ID", "OMNICART_SALES_CHANNEL_ID");
+
+/** Default region id (empty unless configured). */
+const REGION_ID = readEnv("VITE_OMNICART_REGION_ID", "OMNICART_REGION_ID");
+
+/**
  * Resolve the SDK baseUrl for the browser. A CROSS-ORIGIN absolute URL cannot be
  * called directly from the browser unless the Medusa backend's `store_cors` allows
  * this origin; to avoid hard CORS failures by default, any cross-origin value is
@@ -379,7 +391,16 @@ function errorMessage(e: unknown, fallback: string): string {
 /** Create a new cart in a region. */
 export async function createCart(regionId?: string): Promise<BackendResult<OmniCart>> {
   try {
-    const { cart } = await client().store.cart.create(regionId ? { region_id: regionId } : {});
+    // Build the create payload, attaching a sales_channel_id whenever one is
+    // configured. This is REQUIRED when the publishable key maps to multiple
+    // sales channels; Medusa otherwise rejects the request. Region falls back
+    // to the configured REGION_ID so a caller that omits it still gets a
+    // currency-resolved cart. Mirrors omnicart-storefront's createCart.
+    const body: Record<string, unknown> = {};
+    const resolvedRegion = regionId || REGION_ID;
+    if (resolvedRegion) body.region_id = resolvedRegion;
+    if (SALES_CHANNEL_ID) body.sales_channel_id = SALES_CHANNEL_ID;
+    const { cart } = await client().store.cart.create(body);
     return { ok: true, data: toCart(cart) };
   } catch (e) {
     if (isDemoError(e)) return { ok: false, demo: true };

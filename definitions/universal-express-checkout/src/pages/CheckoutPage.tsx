@@ -438,8 +438,12 @@ export function CheckoutPage() {
         setCart(baseCartState);
       }
 
-      // Try to bootstrap live cart if backend is wired
-      const created = await createCart(DEMO_CART.region_id);
+      // Try to bootstrap live cart if backend is wired. Pass no region so
+      // createCart resolves the workspace-configured OMNICART_REGION_ID (the
+      // demo region id is meaningless to a live backend); createCart also
+      // attaches the configured sales_channel_id, required when the
+      // publishable key maps to multiple sales channels.
+      const created = await createCart();
       if (cancelled) return;
       if (created.demo || !created.ok || !created.data) {
         // No backend wired: keep baseCartState in local demo mode.
