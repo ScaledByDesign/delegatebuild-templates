@@ -46,6 +46,10 @@ export interface StartFlowInput {
   paymentMethodId?: string;
   /** The initial-buy PaymentIntent id (`pi_...`) for order linkage. */
   paymentIntentId?: string;
+  /** The processor that completed the initial buy (`stripe` | `omnicart` |
+   *  `konnektive` | `stickyio`). The deployer-owned worker runtime uses this to
+   *  pick which 1-click charge adapter handles the upsell. */
+  processorKind?: string;
 }
 
 export interface StartFlowResult {
@@ -207,6 +211,12 @@ export async function startUpsellFlow(input: StartFlowInput): Promise<StartFlowR
         originalOrderTotal: input.originalOrderTotal,
         flowId: input.flowId,
         currencyCode: input.currencyCode,
+        // Stored payment method + processor so the worker's local upsell runtime
+        // can charge it off-session (1-click). The worker re-resolves pricing
+        // server-side from the signed flow graph; this is only the token + kind.
+        paymentMethodId: input.paymentMethodId,
+        paymentIntentId: input.paymentIntentId,
+        processorKind: input.processorKind,
       }),
     });
     if (res.ok) {

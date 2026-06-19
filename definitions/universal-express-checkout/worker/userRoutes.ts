@@ -1,5 +1,16 @@
 import { Hono } from "hono";
 import { Env } from './core-utils';
+import {
+  FlowRuntime,
+  ProviderRegistry,
+  MemorySessionStore,
+  type ProcessorKind,
+  type SessionStore,
+  type FlowExportNode,
+  type RuntimeSession,
+} from './flow-runtime';
+import { resolveFlow, type FlowCacheEnv, type KVNamespace } from './flow-cache';
+import { makeBackendChargeAdapter } from './charge-adapters';
 
 /**
  * Universal Express Checkout - Worker API routes.
@@ -37,11 +48,19 @@ interface OmniCartEnv extends Env {
   STRIPE_CHECKOUT_BACKEND_URL?: string;
   KONNEKTIVE_CHECKOUT_BACKEND_URL?: string;
   STICKYIO_CHECKOUT_BACKEND_URL?: string;
-  // Flow Builder upsell runtime (Delegate). Base URL + service token for the
-  // session-init + click endpoints. The runtime is the authority for pricing
-  // and graph-walking; the storefront only renders nodes + reports outcomes.
+  // Flow Builder source-of-truth (Delegate core). Base URL + machine token are
+  // used ONLY to fetch the SIGNED, read-only flow GRAPH export — never to run a
+  // charge. The upsell runtime + 1-click charge execute LOCALLY in this worker
+  // (deployer-owned), so a Delegate core outage can never break checkout/upsell.
   OMNICART_UPSELL_RUNTIME_URL?: string;
   OMNICART_UPSELL_RUNTIME_TOKEN?: string;
+  // Tenant + signing for the deployer-owned upsell runtime.
+  DELEGATE_WORKSPACE_ID?: string;
+  FLOW_EXPORT_SIGNING_SECRET?: string;
+  // Optional KV namespace for the durable pull-through flow cache.
+  FLOW_CACHE?: KVNamespace;
+  // Default flow to run when the client doesn't pass one.
+  OMNICART_UPSELL_FLOW_ID?: string;
 }
 
 /**
@@ -201,52 +220,168 @@ async function proxyTo(
   }
 }
 
-// --- Flow Builder upstream shapes (CORE camelCase) --------------------------
-// The platform returns camelCase session/button payloads; we map them to the
-// storefront's snake_case FlowSession/FlowNode contract before responding.
-interface PlatformAcceptOption {
-  id: string;
-  label?: string;
-  price: number;
-  compareAtPrice?: number | null;
-  ctaText?: string | null;
+// --- Wire mappers: runtime (camelCase) → storefront contract (snake_case) ---
+// The local FlowRuntime exposes camelCase RuntimeSession / FlowExportNode; the
+// storefront's flow-types.ts expects snake_case FlowSession / FlowNode. These
+// map between them so the deployer-owned runtime is a drop-in for the old proxy.
+
+const KNOWN_KINDS = new Set<ProcessorKind>([
+  'stripe',
+  'omnicart',
+  'konnektive',
+  'stickyio',
+  'ultracart',
+  'clickbank',
+  'checkoutchamp',
+]);
+
+/** Coerce a client-supplied processor kind to a known kind (else null). */
+function normalizeProcessorKind(raw?: string): ProcessorKind | null {
+  if (!raw) return null;
+  const v = raw.trim().toLowerCase() as ProcessorKind;
+  return KNOWN_KINDS.has(v) ? v : null;
 }
-interface PlatformButton {
-  id: string;
-  label?: string;
-  buttonText?: string;
-  displayPrice?: number | null;
-  currencyCode?: string;
-  metadata?: Record<string, unknown>;
-  acceptOptions?: PlatformAcceptOption[];
-  successNextButtonId?: string | null;
-  declineNextButtonId?: string | null;
-  isTerminalSuccess?: boolean;
-  isTerminalDecline?: boolean;
-  timer?: number | null;
-  externalPageUrl?: string | null;
+
+/** Read a string field off a node's opaque metadata bag. */
+function metaStr(
+  meta: Record<string, unknown> | null | undefined,
+  ...keys: string[]
+): string | null {
+  if (!meta) return null;
+  for (const k of keys) {
+    const v = meta[k];
+    if (typeof v === 'string' && v) return v;
+  }
+  return null;
 }
-interface PlatformJourneyStep {
-  buttonId: string;
-  buttonText: string;
-  action: string;
-  revenue: number;
-  timestamp: string;
+
+/** Read a number field off a node's opaque metadata bag. */
+function metaNum(
+  meta: Record<string, unknown> | null | undefined,
+  ...keys: string[]
+): number | null {
+  if (!meta) return null;
+  for (const k of keys) {
+    const v = meta[k];
+    if (typeof v === 'number') return v;
+  }
+  return null;
 }
-interface PlatformSession {
-  id: string;
-  flowId?: string;
-  status?: string;
-  currentButtonId?: string | null;
-  journey?: unknown;
-  totalRevenueCents?: number;
-  upsellTotalCents?: number;
-  currencyCode?: string;
-  version?: number;
+
+/** Map a runtime session to the storefront's snake_case FlowSession. The
+ *  currency is sourced from the flow graph (sessions don't carry one). */
+function sessionToWire(s: RuntimeSession, currencyCode = 'USD') {
+  return {
+    id: s.id,
+    flow_id: s.flowId,
+    status: s.status,
+    current_button_id: s.currentButtonId,
+    journey: s.journey.map((j) => ({
+      button_id: j.buttonId,
+      button_text: j.buttonText,
+      action: j.action,
+      revenue: j.revenue,
+      timestamp: j.timestamp,
+    })),
+    total_revenue: s.totalRevenueCents,
+    upsell_total: s.upsellTotalCents,
+    currency_code: currencyCode || 'USD',
+    version: s.version,
+  };
 }
-interface PlatformInitResponse {
-  session?: PlatformSession | null;
-  entry_button?: PlatformButton | null;
+
+/** Map a runtime flow node to the storefront's snake_case FlowNode. */
+function nodeToWire(node: FlowExportNode) {
+  const meta = node.metadata ?? {};
+  const accept_options =
+    node.acceptOptions.length > 0
+      ? node.acceptOptions.map((o) => ({
+          id: o.id,
+          label: o.label || '',
+          price: typeof o.price === 'number' ? o.price : 0,
+          compareAtPrice: o.compareAtPrice ?? null,
+          ctaText: o.ctaText ?? null,
+        }))
+      : null;
+  return {
+    id: node.id,
+    label: metaStr(meta, 'headline') || node.label,
+    button_text: node.buttonText,
+    pitch: metaStr(meta, 'description', 'subheadline'),
+    display_price: node.displayPrice ?? null,
+    currency_code: node.currencyCode || 'USD',
+    compare_at_price: metaNum(meta, 'compareAtPrice'),
+    accept_options,
+    decline_text: metaStr(meta, 'declineText'),
+    success_next_button_id: node.successNextButtonId ?? null,
+    decline_next_button_id: node.declineNextButtonId ?? null,
+    is_terminal_success: node.isTerminalSuccess,
+    is_terminal_decline: node.isTerminalDecline,
+    timer: node.timer ?? null,
+    external_page_url: node.externalPageUrl ?? null,
+  };
+}
+
+// --- Deployer-owned upsell runtime wiring ----------------------------------
+// The worker runs the flow state machine LOCALLY. Sessions live in a process
+// store; charges go through worker-owned adapters that call the deployer's
+// processor backends (which hold the secrets). Delegate core is used ONLY as the
+// signed graph source (pull-through cached). This removes core from the payment
+// hot path entirely.
+
+// Module-level session store — shared across requests in this isolate. For
+// multi-isolate durability a KV/DO-backed SessionStore can be substituted; the
+// graph walk + charge logic are identical either way.
+const sessionStore: SessionStore = new MemorySessionStore();
+
+/** Build the charge registry from whatever processor backends are configured. */
+function buildRegistry(env: OmniCartEnv): ProviderRegistry {
+  const resolveBackend = (kind: ProcessorKind): string | undefined =>
+    processorBackend(env, kind);
+  const registry = new ProviderRegistry();
+  const kinds: ProcessorKind[] = [
+    'stripe',
+    'omnicart',
+    'konnektive',
+    'stickyio',
+  ];
+  for (const kind of kinds) {
+    const extraHeaders =
+      kind === 'omnicart' && env.OMNICART_PUBLISHABLE_KEY
+        ? () => ({ 'x-publishable-api-key': env.OMNICART_PUBLISHABLE_KEY as string })
+        : undefined;
+    registry.register(makeBackendChargeAdapter(kind, resolveBackend, extraHeaders));
+  }
+  return registry;
+}
+
+/** Resolve the worker's own public origin (for internal /u redirects). */
+function selfOrigin(c: ProxyCtx): string {
+  try {
+    return new URL(c.req.url).origin;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Build a local FlowRuntime for a flow id using the pull-through cached signed
+ * export. Throws when no flow is resolvable (caller degrades to demo).
+ */
+async function buildRuntime(
+  c: ProxyCtx & { env: Env },
+  flowId: string,
+): Promise<{ runtime: FlowRuntime; source: string }> {
+  const env = c.env as OmniCartEnv;
+  const resolved = await resolveFlow(env as unknown as FlowCacheEnv, flowId);
+  const secret =
+    (env.FLOW_EXPORT_SIGNING_SECRET || env.OMNICART_UPSELL_RUNTIME_TOKEN || '').trim();
+  const runtime = await FlowRuntime.fromSignedToken(resolved.token, secret, {
+    store: sessionStore,
+    registry: buildRegistry(env),
+    selfOrigin: selfOrigin(c),
+  });
+  return { runtime, source: resolved.source };
 }
 
 export function userRoutes(app: Hono<{ Bindings: Env }>) {
@@ -364,169 +499,158 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     return proxyTo(c, target, 'OmniCart', extra);
   });
 
-  // --- OmniCart Flow Builder upsell runtime ---------------------------------
+  // --- Deployer-owned upsell runtime (/api/upsell/*) ------------------------
   // POST /api/upsell/session  → initialize a post-purchase upsell session for a
   //                             paid order; returns { session, entry_node }.
   // GET  /api/upsell/click    → accept/decline the current node (1-click charge
   //                             on accept) + walk the flow graph; returns the
   //                             next node or a terminal result.
-  // Both forward to the configured Flow Builder runtime with the service token
-  // attached server-side. The runtime re-resolves all pricing (anti-tamper).
-  const upsellRuntime = (c: { env: Env }) => {
-    const env = c.env as OmniCartEnv;
-    return {
-      base: (env.OMNICART_UPSELL_RUNTIME_URL || '').replace(/\/$/, ''),
-      token: env.OMNICART_UPSELL_RUNTIME_TOKEN || '',
-    };
-  };
+  //
+  // The flow state machine + 1-click charge run LOCALLY in this worker. Delegate
+  // core is touched ONLY to pull the SIGNED, read-only flow GRAPH (pull-through
+  // cached, signature-verified). Charges go through the deployer's processor
+  // backends (which hold the secrets). A Delegate core outage can therefore
+  // never break the post-purchase upsell — at worst the worker serves a slightly
+  // stale cached graph, and if even that is unavailable it returns 503+demo so
+  // the (already-completed) checkout degrades to the baked snapshot/demo flow.
 
-  const forwardUpsell = async (
-    c: ProxyCtx & { env: Env },
-    upstreamPath: string,
-  ): Promise<Response> => {
-    const { base, token } = upsellRuntime(c);
-    if (!base) {
-      return proxyError('Upsell runtime', 'Upsell runtime not configured', undefined, 503);
-    }
-    const url = new URL(c.req.url);
-    const target = `${normalizeBackend(base)}${upstreamPath}${url.search}`;
-    return proxyTo(c, target, 'Upsell runtime', token ? { authorization: `Bearer ${token}` } : undefined);
-  };
+  // Resolve the flow id the client asked for, else the deployment default.
+  const resolveFlowId = (env: OmniCartEnv, bodyFlowId?: string): string =>
+    (bodyFlowId || env.OMNICART_UPSELL_FLOW_ID || '').trim();
 
   app.post('/api/upsell/session', async (c) => {
-    const { base, token } = upsellRuntime(c);
-    if (!base) {
-      return c.json({ success: false, error: 'Upsell runtime not configured' }, 503);
-    }
+    const env = c.env as OmniCartEnv;
 
-    // Parse incoming camelCase body
     interface UpsellSessionRequest {
       orderId?: string;
       originalOrderTotal?: number;
       flowId?: string;
       currencyCode?: string;
+      paymentMethodId?: string;
+      paymentMethodToken?: string;
+      paymentIntentId?: string;
+      processorKind?: string;
     }
-    let clientBody: UpsellSessionRequest = {};
+    let body: UpsellSessionRequest = {};
     try {
-      clientBody = (await c.req.json()) as UpsellSessionRequest;
+      body = (await c.req.json()) as UpsellSessionRequest;
     } catch {
-      // Empty body
+      // Empty body — falls through to the default flow.
     }
 
-    // Map to platform's snake_case parameters
-    const platformBody = {
-      order_id: clientBody.orderId,
-      original_order_total: clientBody.originalOrderTotal,
-      flow_id: clientBody.flowId,
-      currency_code: clientBody.currencyCode,
-    };
-
-    const target = `${base}/api/flow-builder/init`;
-    const headers = new Headers(c.req.raw.headers);
-    headers.delete('host');
-    headers.set('content-type', 'application/json');
-    headers.set('accept', 'application/json');
-    if (token) headers.set('authorization', `Bearer ${token}`);
+    const flowId = resolveFlowId(env, body.flowId);
+    if (!flowId) {
+      // No flow wired for this deployment → client runs its baked snapshot/demo.
+      return c.json(
+        { success: false, error: 'No upsell flow configured', demo: true },
+        503,
+      );
+    }
 
     try {
-      const upstream = await fetch(target, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(platformBody),
+      const { runtime, source } = await buildRuntime(c, flowId);
+      const paymentMethodToken =
+        (body.paymentMethodToken || body.paymentMethodId || '').trim() || null;
+      const processorKind = normalizeProcessorKind(body.processorKind);
+      const { session, entryNode } = await runtime.initialize({
+        orderId: body.orderId ?? null,
+        originalOrderTotalCents: body.originalOrderTotal ?? 0,
+        paymentMethodToken,
+        processorKind,
       });
-
-      if (!upstream.ok) {
-        const errText = await upstream.text();
-        return new Response(errText, { status: upstream.status, headers: { 'content-type': 'application/json' } });
-      }
-
-      const platformJson = (await upstream.json()) as PlatformInitResponse;
-      const session = platformJson.session ?? null;
-      const entry_button = platformJson.entry_button ?? null;
-
-      // Helper to read journey steps
-      const readJourneySteps = (journey: unknown): PlatformJourneyStep[] => {
-        if (!journey || typeof journey !== "object" || Array.isArray(journey)) {
-          return [];
-        }
-        const steps = (journey as { steps?: unknown }).steps;
-        if (!Array.isArray(steps)) return [];
-        return steps as PlatformJourneyStep[];
-      };
-
-      // Map session to FlowSession
-      const flowSession = session ? {
-        id: session.id,
-        flow_id: session.flowId,
-        status: session.status,
-        current_button_id: session.currentButtonId,
-        journey: readJourneySteps(session.journey).map((s) => ({
-          button_id: s.buttonId,
-          button_text: s.buttonText,
-          action: s.action,
-          revenue: s.revenue,
-          timestamp: s.timestamp,
-        })),
-        total_revenue: session.totalRevenueCents ?? 0,
-        upsell_total: session.upsellTotalCents ?? 0,
-        currency_code: session.currencyCode || "USD",
-        version: session.version ?? 1,
-      } : null;
-
-      // Map button to FlowNode
-      let flowNode = null;
-      if (entry_button) {
-        const meta = entry_button.metadata ?? {};
-        const pitch = typeof meta.description === "string" ? meta.description : (typeof meta.subheadline === "string" ? meta.subheadline : null);
-        const compare_at_price = typeof meta.compareAtPrice === "number" ? meta.compareAtPrice : null;
-        const decline_text = typeof meta.declineText === "string" ? meta.declineText : null;
-        const accept_options = Array.isArray(entry_button.acceptOptions)
-          ? entry_button.acceptOptions.map((v) => ({
-              id: v.id,
-              label: v.label || "",
-              price: v.price,
-              compareAtPrice: v.compareAtPrice ?? null,
-              ctaText: v.ctaText ?? null,
-            }))
-          : null;
-
-        flowNode = {
-          id: entry_button.id,
-          label: typeof meta.headline === "string" && meta.headline ? meta.headline : entry_button.label,
-          button_text: entry_button.buttonText,
-          pitch,
-          display_price: entry_button.displayPrice ?? null,
-          currency_code: entry_button.currencyCode || "USD",
-          compare_at_price,
-          accept_options,
-          decline_text,
-          success_next_button_id: entry_button.successNextButtonId ?? null,
-          decline_next_button_id: entry_button.declineNextButtonId ?? null,
-          is_terminal_success: entry_button.isTerminalSuccess ?? false,
-          is_terminal_decline: entry_button.isTerminalDecline ?? false,
-          timer: entry_button.timer ?? null,
-          external_page_url: entry_button.externalPageUrl ?? null,
-        };
-      }
-
-      return c.json({
-        success: true,
-        data: {
-          session: flowSession,
-          entry_node: flowNode,
-        }
-      });
+      const currency = entryNode.currencyCode || body.currencyCode || 'USD';
+      return c.json(
+        {
+          success: true,
+          data: {
+            session: sessionToWire(session, currency),
+            entry_node: nodeToWire(runtime.node(entryNode.id) ?? entryNode),
+          },
+        },
+        200,
+        { 'x-flow-source': source },
+      );
     } catch (err) {
-      return c.json({
-        success: false,
-        error: `Upsell runtime unreachable: ${err instanceof Error ? err.message : 'unknown'}`
-      }, 502);
+      // Core unreachable / signature invalid / no entry node → degrade. The
+      // client falls back to its baked snapshot (or demo) on a non-success body.
+      console.error(
+        `[upsell/session] flow ${flowId} init failed:`,
+        err instanceof Error ? err.message : err,
+      );
+      return c.json({ success: false, demo: true }, 503);
     }
   });
 
-  // The storefront's stepUpsellFlow GETs this; we forward to the runtime's
-  // flow-builder click endpoint with the service token attached server-side.
-  app.get('/api/upsell/click', (c) => forwardUpsell(c, '/api/flow-builder/click'));
+  // Accept/decline the current node. 1-click charge happens locally on accept.
+  app.get('/api/upsell/click', async (c) => {
+    const env = c.env as OmniCartEnv;
+    const action = (c.req.query('action') || '').toLowerCase();
+    const sessionId = c.req.query('sessionId') || '';
+    const nodeId = c.req.query('nodeId') || c.req.query('buttonId') || '';
+    const variantId = c.req.query('variantId') || undefined;
+    const flowId = resolveFlowId(env, c.req.query('flowId') || undefined);
+
+    if (action !== 'accept' && action !== 'decline') {
+      return c.json({ success: false, error: 'action must be accept|decline' }, 400);
+    }
+    if (!sessionId || !nodeId) {
+      return c.json({ success: false, error: 'sessionId and nodeId are required' }, 400);
+    }
+    if (!flowId) {
+      return c.json({ success: false, error: 'No upsell flow configured', demo: true }, 503);
+    }
+
+    try {
+      const { runtime, source } = await buildRuntime(c, flowId);
+      const step =
+        action === 'accept'
+          ? await runtime.accept(sessionId, nodeId, { variantId })
+          : await runtime.decline(sessionId, nodeId);
+
+      // Re-read the session post-step so the client gets the authoritative
+      // cursor + cumulative revenue (the engine's StepResult omits the session).
+      const session = await sessionStore.get(sessionId);
+      const nextNode = step.nextButtonId ? runtime.node(step.nextButtonId) : null;
+      const actedNode = runtime.node(nodeId);
+      const currency =
+        nextNode?.currencyCode || actedNode?.currencyCode || 'USD';
+
+      return c.json(
+        {
+          success: true,
+          data: {
+            session: session ? sessionToWire(session, currency) : null,
+            next_node: nextNode ? nodeToWire(nextNode) : null,
+            is_terminal: step.isTerminal,
+            redirect: step.redirect ?? null,
+            charge: step.charge
+              ? {
+                  transaction_id: step.charge.transactionId,
+                  amount_charged: step.charge.amountCharged,
+                  currency: step.charge.currency,
+                }
+              : null,
+            payment_error: step.paymentError
+              ? { code: step.paymentError.code, message: step.paymentError.message }
+              : null,
+          },
+        },
+        200,
+        { 'x-flow-source': source },
+      );
+    } catch (err) {
+      // Mid-flow failure on a POST-PURCHASE step: end the upsell gracefully so
+      // the storefront advances to the receipt rather than erroring.
+      console.error(
+        `[upsell/click] ${action} on ${sessionId}/${nodeId} failed:`,
+        err instanceof Error ? err.message : err,
+      );
+      return c.json(
+        { success: false, demo: true, data: { next_node: null, is_terminal: true } },
+        503,
+      );
+    }
+  });
 
   // --- OmniCart config (publishable Stripe key for the browser) -------------
   // Returns only public, browser-safe config for initializing Stripe Elements.
@@ -534,7 +658,11 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
     const env = c.env as OmniCartEnv & { STRIPE_PUBLISHABLE_KEY?: string };
     const code = c.req.query('code') || 'demo';
 
-    const { base: runtimeUrl, token: runtimeToken } = upsellRuntime(c);
+    // The checkout THEME/CONFIG (logo, colors) is a non-critical, read-only
+    // lookup against core — never the payment path — so it may still call core
+    // directly. It degrades silently to the default theme when core is absent.
+    const runtimeUrl = normalizeBackend(env.OMNICART_UPSELL_RUNTIME_URL);
+    const runtimeToken = (env.OMNICART_UPSELL_RUNTIME_TOKEN || '').trim();
     const backendConfigured = Boolean(env.OMNICART_BACKEND_URL && env.OMNICART_UPSELL_RUNTIME_URL);
 
     interface CheckoutTheme {

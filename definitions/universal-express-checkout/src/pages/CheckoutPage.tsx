@@ -916,6 +916,9 @@ export function CheckoutPage() {
         currencyCode: baseOrder.currency_code,
         paymentMethodId: payment?.paymentMethodId,
         paymentIntentId: payment?.paymentIntentId,
+        // The active processor that just completed the buy — drives which 1-click
+        // charge adapter the worker's local upsell runtime uses off-session.
+        processorKind: processor,
       });
 
       // Persist the handoff so the separate upsell/receipt routes can rehydrate
