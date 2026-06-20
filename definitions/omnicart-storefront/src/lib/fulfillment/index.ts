@@ -12,6 +12,7 @@ import {
   OMNICART_REGION_ID,
   OMNICART_INVENTORY_LOCATION_ID,
   OMNICART_SALES_CHANNEL_ID,
+  OMNICART_BACKEND_URL,
 } from '../omnicart-config'
 
 // Initialize Medusa storefront client (publishable key only; never an admin key).
