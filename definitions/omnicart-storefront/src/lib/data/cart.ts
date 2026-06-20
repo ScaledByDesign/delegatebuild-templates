@@ -213,6 +213,13 @@ export const createCart = async (regionId?: string) => {
       if (attribution._raclid) {
         metadata._raclid = attribution._raclid
       }
+      // Lift the affiliate partner code to a top-level cart metadata key (like
+      // `_raclid`) so the OmniCart backend back-stamps it onto the Stripe
+      // PaymentIntent as `affiliate_ref` — the conversion webhook then credits
+      // the partner. Omitted for organic buys.
+      if (attribution.affiliate_ref) {
+        metadata.affiliate_ref = attribution.affiliate_ref
+      }
       body.metadata = metadata
     }
 
@@ -632,6 +639,10 @@ export const mergeAttributionToCart = async (cartId: string): Promise<void> => {
   const metadata: Record<string, unknown> = { attribution }
   if (attribution._raclid) {
     metadata._raclid = attribution._raclid
+  }
+  // Top-level affiliate code so the backend stamps the PI `affiliate_ref`.
+  if (attribution.affiliate_ref) {
+    metadata.affiliate_ref = attribution.affiliate_ref
   }
 
   try {
