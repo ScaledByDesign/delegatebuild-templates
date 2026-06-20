@@ -530,6 +530,12 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       paymentMethodToken?: string;
       paymentIntentId?: string;
       processorKind?: string;
+      // Affiliate partner CODE carried over from the initial buy. Accepted in
+      // both snake_case (embed/`/api/flow-builder/init` convention) and
+      // camelCase. Persisted on the session → stamped into upsell charge
+      // metadata as `affiliate_ref`.
+      affiliate_ref?: string;
+      affiliateRef?: string;
     }
     let body: UpsellSessionRequest = {};
     try {
@@ -552,11 +558,19 @@ export function userRoutes(app: Hono<{ Bindings: Env }>) {
       const paymentMethodToken =
         (body.paymentMethodToken || body.paymentMethodId || '').trim() || null;
       const processorKind = normalizeProcessorKind(body.processorKind);
+      // Accept snake_case or camelCase; normalize empty strings to null so an
+      // organic buy leaves the session's affiliateRef null.
+      const affiliateRefRaw = body.affiliate_ref ?? body.affiliateRef;
+      const affiliateRef =
+        typeof affiliateRefRaw === 'string' && affiliateRefRaw.trim().length > 0
+          ? affiliateRefRaw.trim()
+          : null;
       const { session, entryNode } = await runtime.initialize({
         orderId: body.orderId ?? null,
         originalOrderTotalCents: body.originalOrderTotal ?? 0,
         paymentMethodToken,
         processorKind,
+        affiliateRef,
       });
       const currency = entryNode.currencyCode || body.currencyCode || 'USD';
       return c.json(

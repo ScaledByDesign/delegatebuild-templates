@@ -55,6 +55,8 @@ export interface InitializeInput {
   paymentMethodToken?: string | null;
   originalOrderTotalCents?: number;
   processorKind?: ProcessorKind | null;
+  /** Affiliate partner CODE carried from the initial buy (null for organic). */
+  affiliateRef?: string | null;
 }
 
 function genId(): string {
@@ -147,6 +149,7 @@ export class FlowRuntime {
       processorKind: input.processorKind ?? null,
       workspaceId: this.flow.workspaceId,
       orderId: input.orderId ?? null,
+      affiliateRef: input.affiliateRef ?? null,
     };
     const created = await this.store.create(session);
     return { session: created, entryNode: entry };
@@ -206,6 +209,12 @@ export class FlowRuntime {
               flowId: session.flowId,
               ...(session.orderId
                 ? { originalOrderId: String(session.orderId) }
+                : {}),
+              // Affiliate attribution — stamp the partner code onto the upsell
+              // charge's Stripe metadata so the conversion webhook credits the
+              // same partner that drove the initial buy. Omitted for organic.
+              ...(session.affiliateRef
+                ? { affiliate_ref: session.affiliateRef }
                 : {}),
             },
             idempotencyKey: `accept:${sessionId}:${node.id}:${session.version}`,

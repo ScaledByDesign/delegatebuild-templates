@@ -50,6 +50,11 @@ export interface StartFlowInput {
    *  `konnektive` | `stickyio`). The deployer-owned worker runtime uses this to
    *  pick which 1-click charge adapter handles the upsell. */
   processorKind?: string;
+  /** Affiliate partner CODE captured at the landing/initial buy (`?ref`/`?aff`
+   *  or the `affiliate_ref` cookie). Persisted on the upsell session so the
+   *  runtime stamps it onto every upsell charge's Stripe `affiliate_ref`
+   *  metadata. Omitted for organic visits. */
+  affiliateRef?: string;
 }
 
 export interface StartFlowResult {
@@ -217,6 +222,10 @@ export async function startUpsellFlow(input: StartFlowInput): Promise<StartFlowR
         paymentMethodId: input.paymentMethodId,
         paymentIntentId: input.paymentIntentId,
         processorKind: input.processorKind,
+        // Affiliate carry-over so second-charge (upsell) sales attribute to the
+        // same partner as the initial buy. Snake_case matches the embed widget
+        // + Delegate `/api/flow-builder/init` convention.
+        affiliate_ref: input.affiliateRef,
       }),
     });
     if (res.ok) {

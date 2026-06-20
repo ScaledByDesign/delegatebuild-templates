@@ -32,6 +32,10 @@ import {
   type ShippingOption,
 } from "@/lib/checkout-types";
 import { startUpsellFlow } from "@/lib/upsell-flow";
+import {
+  captureAffiliateRef,
+  affiliateRefMetadata,
+} from "@/lib/affiliate-attribution";
 import { saveHandoff } from "@/lib/checkout-session-store";
 import { getCheckoutAdapter } from "@/lib/checkout/registry";
 import { PROCESSOR_CLASSES, type ProcessorKind } from "@/lib/checkout/manifest";
@@ -352,6 +356,15 @@ export function CheckoutPage() {
   // `initPayment` (or surfaced from an SCA `requires_action`). Null in demo mode
   // and for CRM-class processors (which collect server-side, no Elements).
   const [paymentClientSecret, setPaymentClientSecret] = useState<string | null>(null);
+  // Affiliate partner CODE captured once on mount from `?ref`/`?aff` or the
+  // first-party `affiliate_ref` cookie dropped by the Delegate click route
+  // (`/r/[slug]/[code]`). Stamped onto the PaymentIntent metadata as
+  // `affiliate_ref` and threaded into the upsell session so both the initial
+  // buy and every 1-click upsell attribute to the same partner.
+  const [affiliateRef, setAffiliateRef] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setAffiliateRef(captureAffiliateRef());
+  }, []);
   // Seed from the build-time injected BRAND_THEME so the storefront paints in
   // the merchant's brand on first render (no flash of default colors, no
   // network dependency). `/api/omnicart-config` may still override per-code.
@@ -703,6 +716,10 @@ export function CheckoutPage() {
       offerId: "demo-offer",
       billingModelId: "demo-billing-model",
       shippingId: shippingOptionId,
+      // Affiliate attribution — stamped onto the Stripe PaymentIntent so the
+      // Delegate conversion webhook can credit the partner. Omitted entirely
+      // for organic visits (empty spread).
+      ...affiliateRefMetadata(affiliateRef),
     },
   });
 
@@ -919,6 +936,10 @@ export function CheckoutPage() {
         // The active processor that just completed the buy — drives which 1-click
         // charge adapter the worker's local upsell runtime uses off-session.
         processorKind: processor,
+        // Carry the affiliate partner code into the upsell session so the
+        // runtime stamps it onto every upsell/cross-sell/downsell charge's
+        // Stripe metadata as `affiliate_ref` (attributes second-charge sales).
+        affiliateRef,
       });
 
       // Persist the handoff so the separate upsell/receipt routes can rehydrate

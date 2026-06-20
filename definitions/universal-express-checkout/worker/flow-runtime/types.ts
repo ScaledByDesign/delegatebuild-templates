@@ -117,6 +117,10 @@ export interface RuntimeSession {
   processorKind: ProcessorKind | null;
   workspaceId: string;
   orderId?: string | null;
+  /** Affiliate partner CODE carried from the initial buy. Stamped onto every
+   *  upsell charge's Stripe `affiliate_ref` metadata so second-charge sales
+   *  attribute to the same partner. Null for organic buys. */
+  affiliateRef?: string | null;
 }
 
 /**
