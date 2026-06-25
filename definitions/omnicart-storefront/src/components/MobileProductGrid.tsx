@@ -94,7 +94,7 @@ const MobileProductCard: React.FC<{
         >
           <Link to={`/products/${product.handle}`}>
             <img
-              src={images[currentImageIndex]?.url || '/placeholder-product.jpg'}
+              src={images[currentImageIndex]?.url || '/placeholder.svg'}
               alt={images[currentImageIndex]?.alt || product.title}
               className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
               onTouchStart={() => {

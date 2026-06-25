@@ -1,6 +1,6 @@
 // Using direct API client for CORS-free API access
 import { omnicartClient } from '../../lib/omnicart-client';
-import { OMNICART_PUBLISHABLE_KEY, OMNICART_SALES_CHANNEL_ID } from '@/lib/omnicart-config';
+import { OMNICART_PUBLISHABLE_KEY, OMNICART_SALES_CHANNEL_ID, OMNICART_REGION_ID } from '@/lib/omnicart-config';
 
 export interface OmnicartProductOption {
   id: string
@@ -126,7 +126,7 @@ const DEFAULT_VIRTUAL_COLLECTION = {
 const VIRTUAL_IMAGE_PREFIX = "virtual-image"
 
 const DEFAULT_QUERY_FIELDS =
-  "*variants,*variants.prices,*variants.options,*variants.images,+variants.inventory_quantity,*options,*options.values,*collection,*tags,*images,*metadata"
+  "*variants,*variants.prices,*variants.calculated_price,*variants.options,*variants.images,+variants.inventory_quantity,*options,*options.values,*collection,*tags,*images,*metadata"
 
 async function fetchStoreProductByHandle(
   handle: string,
@@ -140,6 +140,7 @@ async function fetchStoreProductByHandle(
     const query: Record<string, unknown> = {
       handle,
       fields: DEFAULT_QUERY_FIELDS,
+      ...(OMNICART_REGION_ID ? { region_id: OMNICART_REGION_ID } : {}),
     }
 
     if (useSalesChannel && OMNICART_SALES_CHANNEL_ID) {
@@ -333,6 +334,7 @@ export async function getProducts(params?: {
       limit: params?.limit ?? 50,
       offset: params?.offset ?? 0,
       fields: DEFAULT_QUERY_FIELDS,
+      ...(OMNICART_REGION_ID ? { region_id: OMNICART_REGION_ID } : {}),
     }
 
     const resolvedSalesChannelId = params?.sales_channel_id ?? (OMNICART_SALES_CHANNEL_ID ? [OMNICART_SALES_CHANNEL_ID] : undefined)
@@ -399,6 +401,7 @@ export async function getProduct(id: string): Promise<OmnicartProduct | null> {
       {
         query: {
           fields: DEFAULT_QUERY_FIELDS,
+          ...(OMNICART_REGION_ID ? { region_id: OMNICART_REGION_ID } : {}),
           ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: [OMNICART_SALES_CHANNEL_ID] } : {})
         },
         headers: {
@@ -462,6 +465,7 @@ export async function searchProducts(query: string, limit = 20): Promise<Omnicar
         q: query,
         limit,
         fields: DEFAULT_QUERY_FIELDS,
+        ...(OMNICART_REGION_ID ? { region_id: OMNICART_REGION_ID } : {}),
         ...(OMNICART_SALES_CHANNEL_ID ? { sales_channel_id: [OMNICART_SALES_CHANNEL_ID] } : {})
       },
       headers: {

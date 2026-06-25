@@ -1,6 +1,13 @@
 import { OmnicartProduct, OmnicartProductVariant } from '@/services/omnicart/products'
 
 /**
+ * Inline SVG placeholder for products with no thumbnail/images (e.g. sandbox
+ * seed data). Renders as a neutral "No image" tile instead of a broken <img>.
+ */
+export const PRODUCT_IMAGE_PLACEHOLDER =
+  "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='400'%20height='400'%20viewBox='0%200%20400%20400'%3E%3Crect%20width='400'%20height='400'%20fill='%23f1f1f1'/%3E%3Cg%20fill='%23bbb'%3E%3Crect%20x='140'%20y='150'%20width='120'%20height='90'%20rx='8'/%3E%3Ccircle%20cx='172'%20cy='180'%20r='12'%20fill='%23f1f1f1'/%3E%3Cpath%20d='M150%20230l34-34%2026%2026%2030-30%2020%2020v18z'%20fill='%23f1f1f1'/%3E%3C/g%3E%3Ctext%20x='200'%20y='280'%20font-family='sans-serif'%20font-size='20'%20fill='%23999'%20text-anchor='middle'%3ENo%20image%3C/text%3E%3C/svg%3E"
+
+/**
  * Convert variant options to a key-value map
  */
 export const optionsAsKeymap = (
@@ -43,21 +50,28 @@ export const getCheapestPrice = (product: OmnicartProduct) => {
     return null
   }
 
+  // Store API returns price under `calculated_price`; admin/seed data uses
+  // `prices[0]`. Prefer calculated_price, fall back to prices[0].
+  const amountOf = (variant: OmnicartProductVariant): number | undefined =>
+    variant.calculated_price?.calculated_amount ?? variant.prices?.[0]?.amount
+  const currencyOf = (variant?: OmnicartProductVariant): string =>
+    variant?.calculated_price?.currency_code || variant?.prices?.[0]?.currency_code || 'USD'
+
   const prices = product.variants
-    .map(variant => variant.prices?.[0]?.amount)
-    .filter(price => price !== undefined)
+    .map(amountOf)
+    .filter((price): price is number => price !== undefined)
 
   if (prices.length === 0) return null
 
   const cheapestAmount = Math.min(...prices)
   const cheapestVariant = product.variants.find(
-    variant => variant.prices?.[0]?.amount === cheapestAmount
+    variant => amountOf(variant) === cheapestAmount
   )
 
   return {
     amount: cheapestAmount,
-    currency_code: cheapestVariant?.prices?.[0]?.currency_code || 'USD',
-    formatted: formatPrice(cheapestAmount, cheapestVariant?.prices?.[0]?.currency_code || 'USD')
+    currency_code: currencyOf(cheapestVariant),
+    formatted: formatPrice(cheapestAmount, currencyOf(cheapestVariant))
   }
 }
 
@@ -65,15 +79,20 @@ export const getCheapestPrice = (product: OmnicartProduct) => {
  * Get price for a specific variant
  */
 export const getVariantPrice = (variant: OmnicartProductVariant | undefined) => {
-  if (!variant || !variant.prices || variant.prices.length === 0) {
-    return null
-  }
+  if (!variant) return null
 
-  const price = variant.prices[0]
+  // Store API returns price under `calculated_price`; admin/seed data uses
+  // `prices[0]`. Prefer calculated_price, fall back to prices[0].
+  const amount = variant.calculated_price?.calculated_amount ?? variant.prices?.[0]?.amount
+  if (amount === undefined) return null
+
+  const currency_code =
+    variant.calculated_price?.currency_code || variant.prices?.[0]?.currency_code || 'USD'
+
   return {
-    amount: price.amount,
-    currency_code: price.currency_code,
-    formatted: formatPrice(price.amount, price.currency_code)
+    amount,
+    currency_code,
+    formatted: formatPrice(amount, currency_code)
   }
 }
 
@@ -220,10 +239,10 @@ export const sortProductOptions = (
 export const transformOmnicartProductForUI = (medusaProduct: OmnicartProduct) => {
   const cheapestPrice = getCheapestPrice(medusaProduct)
   const variants = medusaProduct.variants || []
+  const amountOf = (v?: OmnicartProductVariant) =>
+    v?.calculated_price?.calculated_amount ?? v?.prices?.[0]?.amount ?? Number.POSITIVE_INFINITY
   const cheapestVariant = variants.reduce((best, variant) => {
-    const variantPrice = variant.prices?.[0]?.amount ?? Number.POSITIVE_INFINITY
-    const bestPrice = best?.prices?.[0]?.amount ?? Number.POSITIVE_INFINITY
-    return variantPrice < bestPrice ? variant : best
+    return amountOf(variant) < amountOf(best) ? variant : best
   }, variants[0])
   
   return {
@@ -231,7 +250,8 @@ export const transformOmnicartProductForUI = (medusaProduct: OmnicartProduct) =>
     name: medusaProduct.title,
     description: medusaProduct.description || '',
     price: cheapestPrice ? cheapestPrice.amount : 0,
-    image: medusaProduct.thumbnail || medusaProduct.images?.[0]?.url || '',
+    currency_code: cheapestPrice ? cheapestPrice.currency_code : 'USD',
+    image: medusaProduct.thumbnail || medusaProduct.images?.[0]?.url || PRODUCT_IMAGE_PLACEHOLDER,
     category: medusaProduct.collection?.handle || '',
     slug: medusaProduct.handle,
     rating: 4.5, // Default rating

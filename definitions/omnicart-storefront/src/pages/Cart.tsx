@@ -185,7 +185,7 @@ const Cart = () => {
                         {/* Product Image */}
                         <div className={`h-16 w-16 sm:h-24 sm:w-24 flex-shrink-0 overflow-hidden rounded-xl sm:rounded-2xl bg-gray-50 ${isOutOfStock ? 'opacity-50' : ''}`}>
                           <img
-                            src={item.thumbnail || item.product?.thumbnail || '/placeholder.png'}
+                            src={item.thumbnail || item.product?.thumbnail || '/placeholder.svg'}
                             alt={item.title}
                             className="h-full w-full object-cover"
                           />
