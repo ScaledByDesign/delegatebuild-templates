@@ -1,4 +1,19 @@
 import { OmnicartProduct, OmnicartProductVariant } from '@/services/omnicart/products'
+import { transformCdnUrl } from '@/lib/util/image-url'
+
+/**
+ * Resolve a product image straight from the product record. Routes the raw
+ * thumbnail/first-image through transformCdnUrl (which repairs Medusa-orphaned
+ * `undefined/<file>` / bare-filename URLs to the public-assets bucket and maps
+ * Shopify/CDN URLs to local paths). Falls back to the inline placeholder when
+ * the product has no usable image (e.g. sandbox seed data).
+ */
+export const resolveProductImage = (medusaProduct: OmnicartProduct): string => {
+  const raw = medusaProduct.thumbnail || medusaProduct.images?.[0]?.url || ''
+  if (!raw) return PRODUCT_IMAGE_PLACEHOLDER
+  const resolved = transformCdnUrl(raw)
+  return resolved || PRODUCT_IMAGE_PLACEHOLDER
+}
 
 /**
  * Inline SVG placeholder for products with no thumbnail/images (e.g. sandbox
@@ -251,7 +266,7 @@ export const transformOmnicartProductForUI = (medusaProduct: OmnicartProduct) =>
     description: medusaProduct.description || '',
     price: cheapestPrice ? cheapestPrice.amount : 0,
     currency_code: cheapestPrice ? cheapestPrice.currency_code : 'USD',
-    image: medusaProduct.thumbnail || medusaProduct.images?.[0]?.url || PRODUCT_IMAGE_PLACEHOLDER,
+    image: resolveProductImage(medusaProduct),
     category: medusaProduct.collection?.handle || '',
     slug: medusaProduct.handle,
     rating: 4.5, // Default rating

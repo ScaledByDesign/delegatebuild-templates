@@ -20,6 +20,71 @@ const SHOPIFY_STORE_PATH = '/s/files/1/0670/4948/8684/'
 const CACHE_BUST_VERSION = 'v1'
 
 /**
+ * Base URL for OmniCart/Medusa product assets that were stored WITHOUT a fully
+ * qualified host. Medusa sometimes serializes an image as `undefined/<file>`
+ * (or a bare `<file>`) when the file-module base URL is unset; the actual file
+ * lives in the connected Supabase public-assets bucket. We repair those URLs
+ * here so images pull straight from the product record.
+ *
+ * Resolution order:
+ *   1. window.__PUBLIC_ENV__.OMNICART_ASSET_BASE_URL / VITE_OMNICART_ASSET_BASE_URL
+ *   2. Supabase project URL (SUPABASE_URL) + /storage/v1/object/public/public-assets
+ *   3. Known default public-assets bucket
+ */
+function readEnv(...keys: string[]): string | undefined {
+  const bag: Record<string, string | undefined> =
+    (typeof window !== 'undefined' && (window as any).__PUBLIC_ENV__) || {}
+  for (const k of keys) {
+    const v = bag[k] ?? (typeof process !== 'undefined' ? process.env?.[k] : undefined)
+    if (v) return v
+  }
+  return undefined
+}
+
+function resolveAssetBaseUrl(): string {
+  const explicit = readEnv('OMNICART_ASSET_BASE_URL', 'VITE_OMNICART_ASSET_BASE_URL')
+  if (explicit) return explicit.replace(/\/+$/, '')
+
+  const supabaseUrl = readEnv('SUPABASE_URL', 'VITE_SUPABASE_URL')
+  if (supabaseUrl) {
+    return `${supabaseUrl.replace(/\/+$/, '')}/storage/v1/object/public/public-assets`
+  }
+
+  // Known default (OmniCart Demo Sandbox / VNSH public-assets bucket).
+  return 'https://gxpiybfbsedbvejieaxd.supabase.co/storage/v1/object/public/public-assets'
+}
+
+const IMAGE_EXT_RE = /\.(webp|png|jpe?g|gif|svg|avif|ico)(\?.*)?$/i
+
+/**
+ * Repairs Medusa-orphaned image URLs:
+ *   - "undefined/foo.webp"  → <assetBase>/foo.webp
+ *   - "null/foo.webp"       → <assetBase>/foo.webp
+ *   - "foo.webp" (bare)     → <assetBase>/foo.webp
+ * Anything already absolute (http/https) or root-absolute (/path) is left alone.
+ */
+export function repairOrphanedAssetUrl(url: string): string {
+  if (!url) return url
+  let candidate = url.trim()
+
+  const orphanPrefix = /^(undefined|null)\/+/i
+  if (orphanPrefix.test(candidate)) {
+    candidate = candidate.replace(orphanPrefix, '')
+  } else if (/^https?:\/\//i.test(candidate) || candidate.startsWith('/')) {
+    // Already a usable URL/path.
+    return url
+  }
+
+  // At this point `candidate` is a bare filename/relative key. Only rewrite if
+  // it looks like an image file, otherwise leave the original untouched.
+  if (!IMAGE_EXT_RE.test(candidate)) return url
+
+  const base = resolveAssetBaseUrl()
+  const key = candidate.replace(/^\/+/, '')
+  return `${base}/${key}`
+}
+
+/**
  * Determines if a URL is an external CDN URL that should be transformed
  */
 export function isExternalCdnUrl(url: string): boolean {
@@ -44,6 +109,12 @@ export function isExternalCdnUrl(url: string): boolean {
  */
 export function transformCdnUrl(url: string): string {
   if (!url) return url
+
+  // First, repair Medusa-orphaned/bare asset URLs so product images resolve.
+  const repaired = repairOrphanedAssetUrl(url)
+  if (repaired !== url) {
+    url = repaired
+  }
 
   try {
     const parsed = new URL(url)
