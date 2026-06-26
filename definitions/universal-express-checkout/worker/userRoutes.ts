@@ -357,6 +357,9 @@ function buildRegistry(env: OmniCartEnv): ProviderRegistry {
     'omnicart',
     'konnektive',
     'stickyio',
+    'ultracart',
+    'checkoutchamp',
+    'clickbank',
   ];
   for (const kind of kinds) {
     const extraHeaders =
