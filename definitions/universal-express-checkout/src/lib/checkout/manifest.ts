@@ -34,6 +34,9 @@ export const PROCESSOR_MANIFEST = [
   { id: "omnicart", label: "OmniCart", class: "payment" },
   { id: "konnektive", label: "Konnektive", class: "crm" },
   { id: "stickyio", label: "Sticky.io", class: "crm" },
+  { id: "ultracart", label: "UltraCart", class: "crm" },
+  { id: "checkoutchamp", label: "Checkout Champ", class: "crm" },
+  { id: "clickbank", label: "ClickBank", class: "crm" },
 ] as const satisfies readonly ProcessorManifestEntry[];
 
 /** Closed set of processor ids, derived from the manifest. */

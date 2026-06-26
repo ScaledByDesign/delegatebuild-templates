@@ -48,6 +48,10 @@ interface OmniCartEnv extends Env {
   STRIPE_CHECKOUT_BACKEND_URL?: string;
   KONNEKTIVE_CHECKOUT_BACKEND_URL?: string;
   STICKYIO_CHECKOUT_BACKEND_URL?: string;
+  // F3e (Funnels Unification — processor adapters) coverage.
+  ULTRACART_CHECKOUT_BACKEND_URL?: string;
+  CHECKOUTCHAMP_CHECKOUT_BACKEND_URL?: string;
+  CLICKBANK_CHECKOUT_BACKEND_URL?: string;
   // Flow Builder source-of-truth (Delegate core). Base URL + machine token are
   // used ONLY to fetch the SIGNED, read-only flow GRAPH export — never to run a
   // charge. The upsell runtime + 1-click charge execute LOCALLY in this worker
@@ -82,6 +86,12 @@ function processorBackend(
       return env.KONNEKTIVE_CHECKOUT_BACKEND_URL;
     case "stickyio":
       return env.STICKYIO_CHECKOUT_BACKEND_URL;
+    case "ultracart":
+      return env.ULTRACART_CHECKOUT_BACKEND_URL;
+    case "checkoutchamp":
+      return env.CHECKOUTCHAMP_CHECKOUT_BACKEND_URL;
+    case "clickbank":
+      return env.CLICKBANK_CHECKOUT_BACKEND_URL;
     default:
       return undefined;
   }
@@ -92,6 +102,9 @@ const KNOWN_PROCESSOR_KINDS = new Set([
   "omnicart",
   "konnektive",
   "stickyio",
+  "ultracart",
+  "checkoutchamp",
+  "clickbank",
 ]);
 
 type ProxyCtx = {

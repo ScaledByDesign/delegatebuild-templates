@@ -22,6 +22,11 @@ const REGISTRY: Record<ProcessorKind, () => Promise<CheckoutProcessorAdapter>> =
   omnicart: () => import("./adapters/omnicart").then((m) => m.omnicartAdapter),
   konnektive: () => import("./adapters/konnektive").then((m) => m.konnektiveAdapter),
   stickyio: () => import("./adapters/stickyio").then((m) => m.stickyioAdapter),
+  // F3e (Funnels Unification — processor adapters) coverage:
+  ultracart: () => import("./adapters/ultracart").then((m) => m.ultracartAdapter),
+  checkoutchamp: () =>
+    import("./adapters/checkoutchamp").then((m) => m.checkoutChampAdapter),
+  clickbank: () => import("./adapters/clickbank").then((m) => m.clickbankAdapter),
 };
 
 const cache = new Map<ProcessorKind, CheckoutProcessorAdapter>();
